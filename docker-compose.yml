@@ -1,0 +1,265 @@
+---
+
+services:
+
+  # Database Service
+  couchbase:
+    profiles: [default, database]  
+    build:
+      context: ./couchbase
+      dockerfile: Dockerfile
+    container_name: couchbase_library
+    hostname: couchbase
+    labels:
+      - "category=database"
+      - "stack=booklib"
+      - "tier=core"
+    ports:
+      - "8091:8091"     # Management
+      - "8092:8092"     # Cluster Manager
+      - "8093:8093"     # Query
+      - "8094:8094"     # FTS
+      - "8095:8095"     # Analytics
+      - "8096:8096"     # Eventing
+      - "8097:8097"     # Backup
+      - "9102:9102"     # Index
+      - "11210:11210"   # Data
+      - "11211:11211"   # Memcached
+    environment:
+      COUCHBASE_ADMINISTRATOR_USERNAME: ${CB_ADMIN_USER}
+      COUCHBASE_ADMINISTRATOR_PASSWORD: ${CB_ADMIN_PASS}
+    volumes:
+      - cb_data:/opt/couchbase/var
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8091/ui/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      books_library:
+        aliases: [couchbase]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Vault (security core)
+  vault:
+    profiles: [default, security]
+    build:
+      context: ./vault
+      dockerfile: Dockerfile
+    image: booklib-vault:${VAULT_VERSION}
+    container_name: vault_library
+    hostname: vault
+    labels:
+      - "category=security"
+      - "stack=booklib"
+      - "tier=core"
+    cap_add: ["IPC_LOCK"]
+    environment:
+      VAULT_LOG_LEVEL: info
+    ports:
+      - "${VAULT_PORT}:${VAULT_PORT}"
+    volumes:
+      - vault_data:/vault/file
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${VAULT_PORT}/v1/sys/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      books_library:
+        aliases: [vault]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Vault Agent (renders secrets for backend)
+  vault-agent:
+    build:
+      context: ./vault-agent
+      dockerfile: Dockerfile
+    image: booklib-vault-agent:latest
+    container_name: vault-agent
+    hostname: vault-agent
+    labels:
+      - "category=security"
+      - "stack=booklib"
+      - "tier=sidecar"
+    command: ["agent", "-config=/vault/agent/agent.hcl", "-log-level=info"]
+    environment:
+      VAULT_ADDR: http://vault:${VAULT_PORT}
+    volumes:
+      - ./ops/vault/agent.hcl:/vault/agent/agent.hcl:ro
+      - ./ops/vault/approle:/vault/approle:ro
+      - vault_agent:/vault/secrets
+    networks:
+      books_library:
+        aliases: [vault-agent]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # MinIO (object storage for covers)
+  minio_srv:
+    profiles: [default, storage]
+    build:
+      context: ./minio_srv
+      dockerfile: Dockerfile
+    container_name: minio
+    hostname: minio
+    labels:
+      - "category=storage"
+      - "stack=booklib"
+      - "tier=core"
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT}:${MINIO_PORT}"
+      - "${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_PORT}"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${MINIO_PORT}/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      books_library:
+        aliases: [minio]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # MinIO Client (mc) bootstrap
+  minio_clt:
+    profiles: [default, storage]
+    build:
+      context: ./minio_clt
+      dockerfile: Dockerfile
+    image: booklib-minio-client:latest
+    container_name: minio_clt
+    hostname: minio_clt
+    labels:
+      - "category=storage"
+      - "stack=booklib"
+      - "tier=utility"
+    depends_on:
+      minio_srv:
+        condition: service_healthy
+    environment:
+      MINIO_HOST: minio
+      MINIO_PORT: ${MINIO_PORT}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: booklib
+      MINIO_APP_USER: booklib
+      MINIO_APP_PASSWORD: booklib-secret
+      MINIO_ALIAS: local
+    volumes:
+      - ./minio_clt/init_minio.sh:/init_minio.sh:ro
+    entrypoint: [ "sh", "-c", "/init_minio.sh" ]
+    networks:
+      books_library:
+        aliases: [minio_clt]
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # Backend API (Express + TS)
+  backend:
+    profiles:
+      - default
+      - backend
+    container_name: backend_library
+    hostname: backend
+    env_file:
+      - ./backend/.env
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    labels:
+      - "category=backend"
+    networks:
+      books_library:
+        aliases:
+          - backend
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Frontend (Nuxt 3)
+  frontend:
+    profiles: [default, frontend]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: booklib-frontend:latest
+    container_name: booklib-frontend
+    hostname: booklib-frontend
+    labels:
+      - "category=frontend"
+      - "stack=booklib"
+      - "tier=app"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NUXT_PUBLIC_API_BASE: http://localhost:${API_PORT}
+      NITRO_PORT: ${WEB_PORT}
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "${WEB_PORT}:${WEB_PORT}"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${WEB_PORT}/"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      books_library:
+        aliases: [booklib-frontend]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  cb_data: {}
+  vault_data: {}
+  minio_data: {}
+  vault_agent: {}
+
+networks:
+  books_library:
+    name: books_library
+    driver: bridge
