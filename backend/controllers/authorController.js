@@ -1,6 +1,4 @@
-// Assumes you have a Couchbase cluster helper that returns a connected Cluster
-// e.g. services/couchbase.js exporting getCluster()
-const { getCluster } = require('../services/couchbasePool');
+const { getBucket } = require('../services/couchbasePool');
 
 const BUCKET = 'library';
 const SCOPE = 'books';
@@ -12,9 +10,8 @@ async function getAuthor(req, res) {
   const key = `author::${id}`;
 
   try {
-    const cluster = await getCluster();
-    const doc = await cluster
-      .bucket(BUCKET)
+    const bucket = getBucket();
+    const doc = await bucket
       .scope(SCOPE)
       .collection(COLLECTION)
       .get(key);
@@ -29,21 +26,25 @@ async function getAuthor(req, res) {
   }
 }
 
-// GET /api/authors   (optional: list authors; uses your PRIMARY index)
+// GET /api/authors   (list authors; uses primary index on the collection)
 async function listAuthors(req, res) {
   try {
-    const cluster = await getCluster();
+    const bucket = getBucket();
+    const scope = bucket.scope(SCOPE);
+
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+
+    // Scoped N1QL: FROM uses just the collection name within the scope
     const q = `
       SELECT a.*
-      FROM \`${BUCKET}\`.\`${SCOPE}\`.\`${COLLECTION}\` a
+      FROM \`${COLLECTION}\` a
       WHERE a.type = "author"
       ORDER BY a.name ASC
       LIMIT $limit OFFSET $offset
     `;
-    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
-    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
 
-    const { rows } = await cluster.query(q, { parameters: { limit, offset } });
+    const { rows } = await scope.query(q, { parameters: { limit, offset } });
     return res.json({ items: rows, pagination: { limit, offset } });
   } catch (err) {
     console.error('[listAuthors] error:', err);
