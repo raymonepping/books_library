@@ -2,7 +2,7 @@
 module.exports = {
     // couchbaseConfig: require('./couchbase'),
     loggerConfig: require('./logger'),
-    poolConfig: require('./pool'),
+    // poolConfig: require('./pool'),
     swaggerOptions: require('./swaggerOptions'),
   };
   

@@ -105,12 +105,12 @@ const server = app.listen(port, () => {
       await reconnectIfChanged(creds);
       const expiry = getLeaseExpiry();
       const ttl = expiry ? Math.max(0, Math.floor((expiry - Date.now()) / 1000)) : null;
-      logger.info(
-        "[couchbase] connected with fresh dynamic creds" +
+      logger.debug(
+        "[Couchbase] connected with fresh dynamic creds" +
         (ttl != null ? ` — renew in ~${formatTTL(ttl)} (at ${formatDate(expiry)})` : "")
       );
     } catch (e) {
-      logger.warn(`[couchbase] connect failed during rotation: ${e.message}`);
+      logger.warn(`[Couchbase] connect failed during rotation: ${e.message}`);
     }
   });
 
