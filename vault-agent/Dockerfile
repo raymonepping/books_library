@@ -1,12 +1,11 @@
 FROM hashicorp/vault:1.20.3
 
-# Bake the config in the image at the exact path the server will read
-COPY vault-config.hcl /vault/config/config.hcl
+# Optional but handy
+RUN apk add --no-cache curl jq bash
 
-# No extra workdir needed, but harmless if present
-WORKDIR /app
+# Ensure these exist so file mounts work
+RUN mkdir -p /vault/agent /vault/approle /vault/secrets /vault/templates
 
-EXPOSE 8200
-
-ENTRYPOINT ["vault"]
-CMD ["server", "-config=/vault/config/config.hcl"]
+# Healthcheck script
+COPY healthcheck.sh /usr/local/bin/healthcheck.sh
+RUN chmod +x /usr/local/bin/healthcheck.sh

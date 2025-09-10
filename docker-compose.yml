@@ -80,34 +80,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Vault Agent (renders secrets for backend)
   vault-agent:
     build:
       context: ./vault-agent
       dockerfile: Dockerfile
-    image: booklib-vault-agent:latest
     container_name: vault-agent
     hostname: vault-agent
-    labels:
-      - "category=security"
-      - "stack=booklib"
-      - "tier=sidecar"
-    command: ["agent", "-config=/vault/agent/agent.hcl", "-log-level=info"]
+    user: "0:0"
     environment:
-      VAULT_ADDR: http://vault:${VAULT_PORT}
+      VAULT_ADDR: http://vault_library:8200
+      SKIP_SETCAP: "1"
+      VAULT_DISABLE_MLOCK: "true"
+    command: ["vault","agent","-config=/vault/agent/agent.hcl","-log-level=info"]
     volumes:
-      - ./ops/vault/agent.hcl:/vault/agent/agent.hcl:ro
-      - ./ops/vault/approle:/vault/approle:ro
-      - vault_agent:/vault/secrets
+      - ./vault-agent/config/agent.hcl:/vault/agent/agent.hcl:ro
+      - ./vault-agent/config/approle:/vault/approle:ro
+      - ./vault-agent/templates:/vault/templates:ro
+      - ./vault-agent/output:/vault/secrets
+    restart: unless-stopped
     networks:
       books_library:
-        aliases: [vault-agent]
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+        aliases: [vault-agent]    
 
   # MinIO (object storage for covers)
   minio_srv:

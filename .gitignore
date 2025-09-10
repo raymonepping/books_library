@@ -118,6 +118,8 @@ docker-compose.override.yml
 ########################################
 .env
 .env.*
+vault-agent/config/approle/secret_id
+vault-agent/config/approle/role_id
 
 ########################################
 # 🛠️ Terraform

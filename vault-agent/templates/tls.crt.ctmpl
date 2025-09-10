@@ -1,0 +1,4 @@
+# ./vault-agent/templates/tls.crt.ctmpl
+{{ with secret "pki/issue/app-role" "common_name=app.local" "ttl=24h" -}}
+{{ .Data.certificate }}
+{{- end }}
