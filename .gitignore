@@ -120,6 +120,7 @@ docker-compose.override.yml
 .env.*
 vault-agent/config/approle/secret_id
 vault-agent/config/approle/role_id
+vault-agent/output/token
 
 ########################################
 # 🛠️ Terraform
