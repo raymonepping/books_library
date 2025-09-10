@@ -1,0 +1,38 @@
+const couchbase = require("couchbase");
+const logger = require("../configurations/logger");
+
+const CONNSTR = process.env.COUCHBASE_CONNSTR;
+const BUCKET  = process.env.COUCHBASE_BUCKET;
+const USER    = process.env.COUCHBASE_USERNAME;
+const PASS    = process.env.COUCHBASE_PASSWORD;
+
+let cluster = null;
+let bucket  = null;
+
+async function connectStatic() {
+  if (!CONNSTR || !BUCKET || !USER || !PASS) {
+    throw new Error("Missing COUCHBASE_* env");
+  }
+  if (cluster) {
+    try { await cluster.close(); } catch {}
+    cluster = null; bucket = null;
+  }
+  logger.info("[couchbase] connecting (static)...");
+  cluster = await couchbase.connect(CONNSTR, { username: USER, password: PASS });
+  bucket  = cluster.bucket(BUCKET);
+  try { await bucket.defaultCollection().get("_ping_"); } catch {}
+  logger.info("[couchbase] connected");
+  return { cluster, bucket };
+}
+
+async function getConnection() {
+  if (cluster && bucket) return { cluster, bucket };
+  return connectStatic();
+}
+
+async function ping() {
+  if (!cluster || !bucket) return false;
+  try { await cluster.ping(); return true; } catch { return false; }
+}
+
+module.exports = { getConnection, ping };
