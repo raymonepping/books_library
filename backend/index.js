@@ -98,6 +98,10 @@ const server = app.listen(port, () => {
   logger.info(`Backend service running on port ${port}`);
 });
 
+process.on('unhandledRejection', (err) => {
+  console.error('UnhandledRejection:', err);
+});
+
 // Start dynamic-cred rotation: first tick connects, later ticks rotate
 (async () => {
   const stop = await startDbCredRotation(async (creds) => {

@@ -1,7 +1,7 @@
 {
   "name": "springer",
   "version": "1.0.0",
-    "main": "index.js",
+  "main": "index.js",
   "scripts": {
     "lint": "eslint .",
     "start": "node index.js"
@@ -11,11 +11,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "axios": "^1.10.0",
+    "axios": "^1.12.0",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "couchbase": "^4.5.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "jose": "^6.1.0",
     "morgan": "^1.10.0",
     "node-vault": "^0.10.2",
     "swagger-jsdoc": "^6.2.8",

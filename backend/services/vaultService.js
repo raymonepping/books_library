@@ -209,4 +209,7 @@ module.exports = {
   // db creds
   getDynamicDbCreds,
   startDbCredRotation,
+
+  // JWT transit (for jwtTransit.js):
+  ensureClientToken,  
 };

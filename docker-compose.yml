@@ -214,7 +214,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: booklib-frontend:latest
     container_name: booklib-frontend
     hostname: booklib-frontend
     labels:

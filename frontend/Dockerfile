@@ -1,25 +1,23 @@
-# Use the official Node.js image as the base image
-FROM node:18
+# Base image
+FROM node:20.19.2
 
-# Set the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy the package.json and package-lock.json
+# Copy package files first to install dependencies
 COPY package*.json ./
 
-# Force install all dependencies (including devDependencies)
-RUN npm install --legacy-peer-deps
-# RUN npm install 
+# Install dependencies
+RUN npm install
 
-# Copy the rest of the application code
+# Copy the rest of the project
 COPY . .
 
-# Build the application
-# RUN npm run build
+# Build the Nuxt app
+RUN npm run build
 
-# Expose the port the app runs on
-EXPOSE 8075
+# Expose port
+EXPOSE 8085
 
-# Start the application in production mode
+# Start Nuxt in production
 CMD ["npm", "run", "dev"]
-# CMD ["npm", "run", "start"]

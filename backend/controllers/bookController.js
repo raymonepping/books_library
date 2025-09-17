@@ -2,12 +2,12 @@ const { getBucket } = require('../services/couchbasePool');
 
 const BUCKET = 'library';
 const SCOPE = 'books';
-const COLLECTION = 'author';
+const COLLECTION = 'book'; // <— collection name is `book`
 
-// GET /api/authors/:id   (id like "jo-nesbo"; key is author::<id>)
-async function getAuthor(req, res) {
+// GET /api/books/:id   (id like "the-snowman"; key is book::<id>)
+async function getBook(req, res) {
   const id = req.params.id;
-  const key = `author::${id}`;
+  const key = `book::${id}`;
 
   try {
     const bucket = getBucket();
@@ -19,15 +19,15 @@ async function getAuthor(req, res) {
     return res.json(doc.content);
   } catch (err) {
     if (err?.context?.first_error_code === 13 /* KeyNotFound */) {
-      return res.status(404).json({ error: 'Author not found', id });
+      return res.status(404).json({ error: 'Book not found', id });
     }
-    console.error('[getAuthor] error:', err);
+    console.error('[getBook] error:', err);
     return res.status(500).json({ error: 'Database error' });
   }
 }
 
-// GET /api/author   (list authors; uses primary index on the collection)
-async function listAuthors(req, res) {
+// GET /api/books   (list books; uses primary index on the collection)
+async function listBooks(req, res) {
   try {
     const bucket = getBucket();
     const scope = bucket.scope(SCOPE);
@@ -35,21 +35,21 @@ async function listAuthors(req, res) {
     const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
     const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
 
-    // Scoped N1QL: FROM uses just the collection name within the scope
+    // Scoped N1QL: FROM uses just the collection name when using scope.query()
     const q = `
-      SELECT a.*
-      FROM \`${COLLECTION}\` a
-      WHERE a.type = "author"
-      ORDER BY a.name ASC
+      SELECT b.*
+      FROM \`${COLLECTION}\` b
+      WHERE b.type = "book"
+      ORDER BY b.title ASC
       LIMIT $limit OFFSET $offset
     `;
 
     const { rows } = await scope.query(q, { parameters: { limit, offset } });
     return res.json({ items: rows, pagination: { limit, offset } });
   } catch (err) {
-    console.error('[listAuthors] error:', err);
+    console.error('[listBooks] error:', err);
     return res.status(500).json({ error: 'Query error' });
   }
 }
 
-module.exports = { getAuthor, listAuthors };
+module.exports = { getBook, listBooks };
