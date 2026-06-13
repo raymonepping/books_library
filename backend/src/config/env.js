@@ -26,6 +26,10 @@ const schema = z.object({
   // Logging
   LOG_LEVEL:            z.enum(['error','warn','info','http','verbose','debug','silly']).default('info'),
   CONTAINER_NAME:       z.string().default('bibliotheek-backend'),
+
+  // API token — if set, all mutation requests (POST/PUT/PATCH/DELETE) require
+  // Authorization: Bearer <token>. Leave empty to disable (local dev default).
+  API_TOKEN:            z.string().default(''),
 })
 
 export const config = schema.parse(process.env)

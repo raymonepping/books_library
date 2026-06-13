@@ -1,4 +1,5 @@
 const BASE = import.meta.env.VITE_API_URL || ''
+const TOKEN = import.meta.env.VITE_API_TOKEN || ''
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -13,6 +14,7 @@ async function request(path, options = {}) {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
       ...rest.headers,
     },
     body: body != null ? JSON.stringify(body) : undefined,
