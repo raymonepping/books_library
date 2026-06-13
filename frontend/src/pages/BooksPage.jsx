@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
-import { BookOpen, Grid3X3, AlignJustify, BookMarked } from 'lucide-react'
+import { BookOpen, Grid3X3, AlignJustify, BookMarked, LayoutGrid } from 'lucide-react'
 import { useLibraryStore } from '../store/useLibraryStore.js'
 import { useUIStore } from '../store/useUIStore.js'
-import Spinner from '../components/ui/Spinner.jsx'
 import Button from '../components/ui/Button.jsx'
 import SpineView from '../components/BookViews/SpineView.jsx'
 import GridView from '../components/BookViews/GridView.jsx'
 import ListView from '../components/BookViews/ListView.jsx'
+import { SkeletonBookCard, SkeletonListRow } from '../components/ui/SkeletonCard.jsx'
 
 const VIEW_ICONS = {
   spine: BookMarked,
@@ -24,33 +24,52 @@ const READ_STATUS_OPTIONS = [
 export default function BooksPage() {
   const { books, totalBooks, booksLoading, booksError, fetchBooks, setBooksFilter, booksFilters } =
     useLibraryStore()
-  const { booksView, setBooksView, setAddBookOpen } = useUIStore()
+  const { booksView, setBooksView, setAddBookOpen, booksDensity, toggleBooksDensity } = useUIStore()
 
   useEffect(() => { fetchBooks() }, [])
 
   return (
     <div className="flex flex-col h-full">
       {/* ── Toolbar ── */}
-      <header className="flex items-center gap-4 px-6 py-4 border-b border-smoke-light shrink-0">
+      <header className="flex flex-wrap items-center gap-2 px-4 md:px-6 py-3 border-b border-smoke-light shrink-0">
+        {/* Title */}
         <h1 className="font-serif text-xl text-ice mr-auto">
           Library
           {totalBooks > 0 && (
             <span className="ml-2 font-sans text-sm text-ice/40 font-normal">
-              {totalBooks} books
+              {totalBooks}
             </span>
           )}
         </h1>
 
+        {/* Status filter — full label on md+, icon only on sm */}
         <select
           value={booksFilters.status}
           onChange={e => setBooksFilter('status', e.target.value)}
-          className="bg-smoke border border-smoke-light text-ice/80 text-sm rounded px-3 py-1.5 cursor-pointer"
+          className="bg-smoke border border-smoke-light text-ice/80 text-sm rounded px-2 py-1.5 cursor-pointer"
         >
           {READ_STATUS_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
 
+        {/* Density toggle — only visible in grid mode */}
+        {booksView === 'grid' && (
+          <button
+            onClick={toggleBooksDensity}
+            title={booksDensity === 'compact' ? 'Normal density' : 'Compact density'}
+            className={[
+              'p-1.5 rounded border transition-colors cursor-pointer',
+              booksDensity === 'compact'
+                ? 'border-amber/40 text-amber bg-amber/10'
+                : 'border-smoke-light text-ice/40 hover:text-ice',
+            ].join(' ')}
+          >
+            <LayoutGrid size={16} />
+          </button>
+        )}
+
+        {/* View switcher */}
         <div className="flex gap-1 border border-smoke-light rounded p-0.5">
           {Object.entries(VIEW_ICONS).map(([mode, Icon]) => (
             <button
@@ -67,16 +86,22 @@ export default function BooksPage() {
           ))}
         </div>
 
-        <Button onClick={() => setAddBookOpen(true)} size="sm">
+        <Button onClick={() => setAddBookOpen(true)} size="sm" className="hidden sm:inline-flex">
           + Add book
         </Button>
       </header>
 
       {/* ── Content ── */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {booksLoading && (
-          <div className="flex items-center justify-center h-48">
-            <Spinner size={32} />
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6">
+        {/* Skeleton loading state */}
+        {booksLoading && booksView === 'list' && (
+          <div className="flex flex-col divide-y divide-white/[0.04]">
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonListRow key={i} />)}
+          </div>
+        )}
+        {booksLoading && booksView !== 'list' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 20 }}>
+            {Array.from({ length: 12 }).map((_, i) => <SkeletonBookCard key={i} />)}
           </div>
         )}
 
@@ -97,16 +122,19 @@ export default function BooksPage() {
           </div>
         )}
 
-        {!booksLoading && books.length > 0 && booksView === 'spine' && (
-          <SpineView books={books} />
-        )}
-        {!booksLoading && books.length > 0 && booksView === 'grid' && (
-          <GridView books={books} />
-        )}
-        {!booksLoading && books.length > 0 && booksView === 'list' && (
-          <ListView books={books} />
-        )}
+        {!booksLoading && books.length > 0 && booksView === 'spine' && <SpineView books={books} />}
+        {!booksLoading && books.length > 0 && booksView === 'grid'  && <GridView books={books} />}
+        {!booksLoading && books.length > 0 && booksView === 'list'  && <ListView books={books} />}
       </div>
+
+      {/* Mobile FAB for "Add book" */}
+      <button
+        onClick={() => setAddBookOpen(true)}
+        className="sm:hidden fixed bottom-20 right-4 z-20 w-12 h-12 rounded-full bg-amber text-noir flex items-center justify-center shadow-lg shadow-amber/30 text-2xl font-light"
+        aria-label="Add book"
+      >
+        +
+      </button>
     </div>
   )
 }

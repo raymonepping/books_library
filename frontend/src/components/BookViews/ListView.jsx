@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Badge from '../ui/Badge.jsx'
 import BookDetailPanel from './BookDetailPanel.jsx'
-import { spineColor } from './spineUtils.js'
+import { coverPlaceholder } from '../../utils/coverPlaceholder.js'
 import { authorNames } from '../../utils/authors.js'
 
 export default function ListView({ books }) {
@@ -24,25 +24,35 @@ export default function ListView({ books }) {
 }
 
 function BookRow({ book, isSelected, onSelect }) {
-  const { bg } = spineColor(book)
+  const { bg, fg, initials } = coverPlaceholder(book)
+  const [imgError, setImgError] = useState(false)
+  const showCover = book.coverUrl && !imgError
 
   return (
     <div
       onClick={onSelect}
       className={[
         'flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-150 cursor-pointer group',
-        isSelected
-          ? 'bg-white/8 ring-1 ring-amber/20'
-          : 'hover:bg-white/[0.04]',
+        isSelected ? 'bg-white/8 ring-1 ring-amber/20' : 'hover:bg-white/[0.04]',
       ].join(' ')}
     >
       {/* Cover thumbnail */}
       <div
-        className="w-10 h-14 rounded-md shrink-0 overflow-hidden shadow-md shadow-black/40"
+        className="w-10 h-14 rounded-md shrink-0 overflow-hidden shadow-md shadow-black/40 flex items-center justify-center"
         style={{ backgroundColor: bg }}
       >
-        {book.coverUrl && (
-          <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+        {showCover ? (
+          <img
+            src={book.coverUrl}
+            alt=""
+            loading="lazy"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span className="font-serif font-bold text-xs select-none" style={{ color: fg }}>
+            {initials}
+          </span>
         )}
       </div>
 

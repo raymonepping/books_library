@@ -10,13 +10,22 @@ export const useUIStore = create((set) => ({
   addBookOpen: false,
   setAddBookOpen: (v) => set({ addBookOpen: v }),
 
-  // Sidebar
+  // Sidebar (desktop collapse)
   sidebarCollapsed: false,
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+  // Mobile drawer
+  mobileDrawerOpen: false,
+  setMobileDrawerOpen: (v) => set({ mobileDrawerOpen: v }),
 
   // Books view mode: 'spine' | 'grid' | 'list'
   booksView: 'grid',
   setBooksView: (v) => set({ booksView: v }),
+
+  // Books density: 'normal' | 'compact'
+  booksDensity: 'normal',
+  setBooksDensity: (v) => set({ booksDensity: v }),
+  toggleBooksDensity: () => set(s => ({ booksDensity: s.booksDensity === 'normal' ? 'compact' : 'normal' })),
 
   // Toast notifications
   toasts: [],
