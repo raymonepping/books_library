@@ -2,11 +2,41 @@ import axios from 'axios'
 import couchbase from 'couchbase'
 import { getScope, getCluster } from '../config/couchbase.js'
 import { logger } from '../config/logger.js'
+import { URL } from 'url'
+import dns from 'dns/promises'
+import net from 'net'
 
 const BUCKET = process.env.COUCHBASE_BUCKET || 'library'
 const SCOPE_NAME = process.env.COUCHBASE_SCOPE || 'library_scope'
 const KS_BOOKS = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`books\``
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+
+// RFC-1918 + loopback + link-local ranges — never fetch from these
+const PRIVATE_CIDRS = [
+  [0x7f000000, 0xff000000],   // 127.0.0.0/8   loopback
+  [0x0a000000, 0xff000000],   // 10.0.0.0/8
+  [0xac100000, 0xfff00000],   // 172.16.0.0/12
+  [0xc0a80000, 0xffff0000],   // 192.168.0.0/16
+  [0xa9fe0000, 0xffff0000],   // 169.254.0.0/16 link-local
+  [0x00000000, 0xff000000],   // 0.0.0.0/8
+]
+
+function isPrivateIp(ip) {
+  if (!net.isIPv4(ip)) return true // block IPv6 — not needed for cover images
+  const n = ip.split('.').reduce((acc, o) => (acc << 8) + parseInt(o, 10), 0) >>> 0
+  return PRIVATE_CIDRS.some(([base, mask]) => (n & mask) === (base & mask))
+}
+
+async function isSafeUrl(rawUrl) {
+  let parsed
+  try { parsed = new URL(rawUrl) } catch { return false }
+  if (parsed.protocol !== 'https:') return false
+
+  const addresses = await dns.resolve4(parsed.hostname).catch(() => [])
+  if (!addresses.length) return false
+  if (addresses.some(isPrivateIp)) return false
+  return true
+}
 
 function col() {
   return getScope().collection('covers')
@@ -19,7 +49,12 @@ function booksCol() {
 // Download an image URL and store it in the covers collection.
 // Returns the local /api/covers/:bookId path on success, null on failure.
 export async function downloadAndStoreCover(bookId, url) {
-  if (!url || !url.startsWith('http')) return null
+  if (!url || !url.startsWith('https://')) return null
+
+  if (!await isSafeUrl(url)) {
+    logger.warn('[covers] blocked unsafe URL', { bookId, url })
+    return null
+  }
 
   let res
   try {

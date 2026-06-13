@@ -57,7 +57,7 @@ These files are gitignored — never commit them.
 ### 2. Couchbase
 
 ```bash
-CB_PASS='dgm7KQY.eft@yfh.vxb' bash scripts/cb-init.sh
+CB_PASS='&lt;your-couchbase-admin-password&gt;' bash scripts/cb-init.sh
 ```
 
 This creates the `library` bucket, `library_scope`, all five collections, GSI indexes, and FTS indexes. Safe to re-run.
@@ -90,7 +90,7 @@ npm run dev        # http://localhost:5173, proxies /api → :3002
 Create dev secrets:
 ```bash
 mkdir -p /tmp/bibliotheek-dev-secrets
-printf 'CB_USERNAME=Administrator\nCB_PASSWORD=dgm7KQY.eft@yfh.vxb\n' \
+printf 'CB_USERNAME=Administrator\nCB_PASSWORD=&lt;your-couchbase-admin-password&gt;\n' \
   > /tmp/bibliotheek-dev-secrets/db.env
 printf 'GOOGLE_BOOKS_API_KEY=PLACEHOLDER\n' \
   > /tmp/bibliotheek-dev-secrets/external.env

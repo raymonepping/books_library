@@ -132,9 +132,11 @@ export async function createBook(data) {
     description: data.description ?? '',
     owned: data.owned ?? false,
     readStatus: READ_STATUSES.has(data.readStatus) ? data.readStatus : 'want-to-read',
+    finishedAt: null,
     progress: null,
     rating: data.rating ?? null,
     addedAt: now,
+    updatedAt: now,
     notes: data.notes ?? '',
     embedding: null,
   }
@@ -171,6 +173,7 @@ export async function updateBook(id, data) {
       ? updates.readStatus
       : existing.content.readStatus,
   }
+  updated.updatedAt = new Date().toISOString()
   await col().replace(id, updated)
   logger.info('[books] updated', { id })
 
@@ -205,12 +208,24 @@ export async function updateBookStatus(id, { readStatus, progress, rating }) {
   if (readStatus !== undefined) {
     if (!READ_STATUSES.has(readStatus)) throw new ValidationError(`Invalid readStatus: ${readStatus}`)
     specs.push(couchbase.MutateInSpec.upsert('readStatus', readStatus))
+    // Record when a book is finished; clear if moved back to an unfinished state
+    specs.push(couchbase.MutateInSpec.upsert('finishedAt',
+      readStatus === 'read' ? new Date().toISOString() : null
+    ))
+    specs.push(couchbase.MutateInSpec.upsert('updatedAt', new Date().toISOString()))
   }
   if (progress !== undefined) {
     specs.push(couchbase.MutateInSpec.upsert('progress', Math.min(Math.max(parseInt(progress) || 0, 0), 100)))
   }
   if (rating !== undefined) {
-    specs.push(couchbase.MutateInSpec.upsert('rating', Math.min(Math.max(parseInt(rating) || 0, 1), 5)))
+    if (rating === null) {
+      specs.push(couchbase.MutateInSpec.upsert('rating', null))
+    } else {
+      const r = parseInt(rating)
+      if (!Number.isNaN(r)) {
+        specs.push(couchbase.MutateInSpec.upsert('rating', Math.min(Math.max(r, 1), 5)))
+      }
+    }
   }
 
   if (!specs.length) return getBook(id)

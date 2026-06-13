@@ -44,8 +44,8 @@ router.get('/', async (req, res) => {
   const yearResult = await cluster.query(`
     SELECT COUNT(1) AS cnt
     FROM ${KS} AS b
-    WHERE b.readStatus = 'read'
-      AND b.updatedAt >= "${year}-01-01T00:00:00.000Z"
+    WHERE (b.readStatus = 'read' OR b.readStatus = 'finished')
+      AND b.finishedAt >= "${year}-01-01T00:00:00.000Z"
   `)
 
   res.json({
