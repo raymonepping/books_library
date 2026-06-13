@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* ─── Noir palette ────────────────────────────────────────────────────────── */
+@theme {
+  /* Core palette */
+  --color-noir:  #0d0d0d;   /* true deep black — primary background */
+  --color-blood: #c0392b;   /* aged warm red — crime scene tape */
+  --color-amber: #e8a020;   /* reading-lamp yellow — streetlight through fog */
+  --color-ice:   #e8eef2;   /* cold near-white — Nordic cold */
+  --color-steel: #4a6fa5;   /* muted blue — secondary surfaces */
+  --color-smoke: #2a2a2a;   /* card surfaces — the shelf behind the books */
+
+  /* Derived surfaces */
+  --color-smoke-light: #333333;
+  --color-smoke-dark:  #1a1a1a;
+  --color-blood-dim:   #8b2020;
+  --color-steel-dim:   #2d4a73;
+  --color-amber-dim:   #b07818;
+
+  /* Typography */
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-sans:  'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* ─── Base ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-noir);
+  color: var(--color-ice);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Selection ───────────────────────────────────────────────────────────── */
+::selection {
+  background: var(--color-amber);
+  color: var(--color-noir);
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-noir); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-smoke-light);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-steel-dim); }
+
+/* ─── Focus ───────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+}
+
+/* ─── Headings ────────────────────────────────────────────────────────────── */
+h1, h2, h3 { font-family: var(--font-serif); }
+
+/* ─── Utility: hide scrollbar but keep scroll ─────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

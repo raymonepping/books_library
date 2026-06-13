@@ -1,0 +1,127 @@
+# =============================================================================
+# Bibliotheek — .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Scripts (adapted from other projects — not part of this repo)
+# -----------------------------------------------------------------------------
+scripts/
+
+# -----------------------------------------------------------------------------
+# Environment & secrets — NEVER commit these
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# Vault AppRole credentials written during vault-setup
+backend/vault/config/role-id
+backend/vault/config/secret-id
+
+# Vault Agent rendered secrets
+backend/vault/secrets/
+vault/secrets/
+**/vault/secrets/
+
+# Dev secret overrides
+/tmp/bibliotheek-dev-secrets/
+
+# Vault license files
+*.hclic
+
+# Any generic secret / credential dumps
+*.secret
+*.secrets
+credentials.json
+
+# -----------------------------------------------------------------------------
+# Node / npm
+# -----------------------------------------------------------------------------
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime / cache
+.npm/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.cache/
+.vite/
+
+# Test / coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# TypeScript
+*.tsbuildinfo
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+docker-compose.override.yml
+docker-compose.local.yml
+
+# -----------------------------------------------------------------------------
+# macOS
+# -----------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# -----------------------------------------------------------------------------
+# Windows
+# -----------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# -----------------------------------------------------------------------------
+# Linux
+# -----------------------------------------------------------------------------
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# -----------------------------------------------------------------------------
+# IDE / editors
+# -----------------------------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*.swn
+.project
+.classpath
+.settings/
+
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+*.bak
+*.tmp
+*.orig

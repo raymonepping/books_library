@@ -1,0 +1,81 @@
+name: books_library
+
+# Shared infra (vault, couchbase, ollama) lives on malware_scan_default.
+# The backend joins that network; the frontend talks only to the backend.
+
+services:
+
+  # ── Vault Agent — fetches secrets and renders them into vault_secrets volume ──
+  vault-agent:
+    image: hashicorp/vault:2.0.2
+    container_name: bibliotheek-vault-agent
+    user: root
+    entrypoint: ["vault"]
+    command: agent -config=/vault/config/agent.hcl -log-level=info
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - shared_infra
+    volumes:
+      - ./backend/vault/config:/vault/config:ro
+      - ./backend/vault/templates:/vault/templates:ro
+      - vault_secrets:/vault/secrets
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /vault/secrets/db.env && test -f /vault/secrets/external.env"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Express API ───────────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    image: ${DOCKERHUB_NAMESPACE:-repping}/bibliotheek-backend:${BIBLIOTHEEK_VERSION:-latest}
+    container_name: bibliotheek-backend
+    env_file: .env
+    environment:
+      CONTAINER_NAME: bibliotheek-backend
+    ports:
+      - "${BACKEND_HOST_PORT:-3002}:3000"
+    networks:
+      - app
+      - shared_infra
+    volumes:
+      - vault_secrets:/vault/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── React SPA via Nginx ───────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    image: ${DOCKERHUB_NAMESPACE:-repping}/bibliotheek-frontend:${BIBLIOTHEEK_VERSION:-latest}
+    container_name: bibliotheek-frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - app
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  app:
+    driver: bridge
+
+  # Shared network that hosts vault-haproxy, couchbase, and ollama
+  shared_infra:
+    external: true
+    name: malware_scan_default
+
+volumes:
+  vault_secrets:
