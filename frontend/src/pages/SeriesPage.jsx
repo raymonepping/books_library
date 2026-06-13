@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Layers, ShoppingCart } from 'lucide-react'
+import { Layers, ShoppingCart, Pencil, Plus } from 'lucide-react'
 import { seriesApi } from '../api/series.js'
+import SeriesEditor from '../components/series/SeriesEditor.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 
 export default function SeriesPage() {
@@ -9,6 +10,7 @@ export default function SeriesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toggling, setToggling] = useState(null) // `${seriesId}:${order}`
+  const [editingSeries, setEditingSeries] = useState(null) // null | series object | 'new'
 
   useEffect(() => {
     seriesApi.list({ limit: 100 })
@@ -25,64 +27,98 @@ export default function SeriesPage() {
       const updated = await seriesApi.markOwned(seriesId, order, !currentlyOwned)
       setSeries(prev => prev.map(s => s.id === seriesId ? updated : s))
     } catch {
-      // silent — no toast since this is an optimistic list
+      // silent
     } finally {
       setToggling(null)
     }
   }
 
+  function handleSaved(updated) {
+    setSeries(prev => {
+      const idx = prev.findIndex(s => s.id === updated.id)
+      return idx >= 0 ? prev.map(s => s.id === updated.id ? updated : s) : [updated, ...prev]
+    })
+    setTotal(prev => series.find(s => s.id === updated.id) ? prev : prev + 1)
+  }
+
+  const editorSeries = editingSeries === 'new' ? null : editingSeries
+
   return (
-    <div className="flex flex-col h-full">
-      <header className="flex items-center px-6 py-4 border-b border-smoke-light shrink-0">
-        <h1 className="font-serif text-xl text-ice mr-auto">
-          Series
-          {total > 0 && (
-            <span className="ml-2 font-sans text-sm text-ice/40 font-normal">{total}</span>
+    <div className="flex h-full">
+      {/* Main list */}
+      <div className="flex flex-col flex-1 min-w-0 h-full">
+        <header className="flex items-center px-6 py-4 border-b border-smoke-light shrink-0">
+          <h1 className="font-serif text-xl text-ice mr-auto">
+            Series
+            {total > 0 && (
+              <span className="ml-2 font-sans text-sm text-ice/40 font-normal">{total}</span>
+            )}
+          </h1>
+          <button
+            onClick={() => setEditingSeries('new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blood text-ice rounded hover:bg-blood/80 transition-colors cursor-pointer"
+          >
+            <Plus size={14} />
+            New series
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {loading && (
+            <div className="flex items-center justify-center h-48">
+              <Spinner size={32} />
+            </div>
           )}
-        </h1>
-      </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {loading && (
-          <div className="flex items-center justify-center h-48">
-            <Spinner size={32} />
-          </div>
-        )}
+          {error && (
+            <div className="text-blood/80 text-sm p-4 border border-blood/30 rounded bg-blood/5">
+              {error}
+            </div>
+          )}
 
-        {error && (
-          <div className="text-blood/80 text-sm p-4 border border-blood/30 rounded bg-blood/5">
-            {error}
-          </div>
-        )}
+          {!loading && !error && series.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <Layers size={48} className="text-ice/20 mb-4" />
+              <p className="font-serif text-ice/40 text-lg">No series yet</p>
+              <p className="text-ice/30 text-sm mt-1">
+                Create one with the "New series" button above
+              </p>
+            </div>
+          )}
 
-        {!loading && !error && series.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <Layers size={48} className="text-ice/20 mb-4" />
-            <p className="font-serif text-ice/40 text-lg">No series yet</p>
-            <p className="text-ice/30 text-sm mt-1">Series appear when you add books that belong to one</p>
-          </div>
-        )}
-
-        {!loading && series.length > 0 && (
-          <div className="space-y-6">
-            {series.map(s => (
-              <SeriesCard
-                key={s.id}
-                series={s}
-                toggling={toggling}
-                onToggleOwned={handleToggleOwned}
-              />
-            ))}
-          </div>
-        )}
+          {!loading && series.length > 0 && (
+            <div className="space-y-6">
+              {series.map(s => (
+                <SeriesCard
+                  key={s.id}
+                  series={s}
+                  toggling={toggling}
+                  onToggleOwned={handleToggleOwned}
+                  onEdit={() => setEditingSeries(s)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Editor panel */}
+      {editingSeries && (
+        <div className="w-96 shrink-0 border-l border-smoke-light h-full">
+          <SeriesEditor
+            series={editorSeries}
+            onClose={() => setEditingSeries(null)}
+            onSaved={handleSaved}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
 /* ── Series card ────────────────────────────────────────────────────────────── */
 
-function SeriesCard({ series, toggling, onToggleOwned }) {
+function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
   const pct = series.completionPct ?? 0
   const isComplete = series.completedAt != null
 
@@ -100,7 +136,16 @@ function SeriesCard({ series, toggling, onToggleOwned }) {
               )}
             </p>
           </div>
-          <span className="text-ice/50 text-sm font-mono shrink-0">{Math.round(pct)}%</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-ice/50 text-sm font-mono">{Math.round(pct)}%</span>
+            <button
+              onClick={onEdit}
+              title="Edit series"
+              className="text-ice/30 hover:text-amber transition-colors cursor-pointer"
+            >
+              <Pencil size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Progress bar */}
@@ -143,6 +188,11 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
     ? `https://www.bol.com/nl/nl/s/?searchtext=${encodeURIComponent(book.isbn)}`
     : `https://www.bol.com/nl/nl/s/?searchtext=${encodeURIComponent(book.title)}`
 
+  const subtitle = [
+    book.originalTitle,
+    ...(book.altTitles ?? []),
+  ].filter(Boolean).join(' · ')
+
   return (
     <div className={[
       'flex items-center gap-4 px-5 py-3 transition-colors',
@@ -153,11 +203,14 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
         {book.seriesOrder}
       </span>
 
-      {/* Title + year */}
+      {/* Title + original/alt */}
       <div className="flex-1 min-w-0">
         <p className={['text-sm truncate', book.owned ? 'text-ice/80' : 'text-ice/40'].join(' ')}>
           {book.title || `Book ${book.seriesOrder}`}
         </p>
+        {subtitle && (
+          <p className="text-ice/25 text-xs truncate">{subtitle}</p>
+        )}
         {book.publishedYear && (
           <p className="text-ice/30 text-xs">{book.publishedYear}</p>
         )}

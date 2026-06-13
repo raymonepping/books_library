@@ -28,6 +28,13 @@ router.get('/:id', async (req, res) => {
   res.json({ success: true, data })
 })
 
+// PUT /api/series/:id
+router.put('/:id', async (req, res) => {
+  if (!req.body.name?.trim()) throw new ValidationError('name is required')
+  const data = await seriesService.updateSeries(req.params.id, req.body)
+  res.json({ success: true, data })
+})
+
 // GET /api/series/:id/missing
 router.get('/:id/missing', async (req, res) => {
   const data = await seriesService.getMissingBooks(req.params.id)

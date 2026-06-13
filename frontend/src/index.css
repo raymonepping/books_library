@@ -69,3 +69,18 @@ h1, h2, h3 { font-family: var(--font-serif); }
 /* ─── Utility: hide scrollbar but keep scroll ─────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Shared form input ───────────────────────────────────────────────────── */
+.field-input {
+  width: 100%;
+  background: var(--color-smoke-dark);
+  border: 1px solid var(--color-smoke-light);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--color-ice);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.field-input:focus { border-color: var(--color-steel); }
+.field-input::placeholder { color: color-mix(in srgb, var(--color-ice) 30%, transparent); }

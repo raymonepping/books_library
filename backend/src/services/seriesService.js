@@ -116,6 +116,41 @@ export async function getMissingBooks(id) {
 }
 
 // ------------------------------------------------------------------------------
+// Update
+// ------------------------------------------------------------------------------
+export async function updateSeries(id, data) {
+  const existing = await kvGet(id)
+  const current = existing.content
+
+  const books = (data.books ?? current.books ?? []).map((b) => ({
+    seriesOrder: parseInt(b.seriesOrder) || 0,
+    bookId: b.bookId ?? null,
+    title: b.title ?? '',
+    originalTitle: b.originalTitle ?? '',
+    altTitles: Array.isArray(b.altTitles) ? b.altTitles.filter(Boolean) : [],
+    isbn: b.isbn ?? '',
+    publishedYear: b.publishedYear ? parseInt(b.publishedYear) : null,
+    owned: Boolean(b.owned),
+  })).sort((a, b) => a.seriesOrder - b.seriesOrder)
+
+  const updated = {
+    ...current,
+    name: data.name?.trim() ?? current.name,
+    slug: data.slug ?? current.slug,
+    authorId: data.authorId !== undefined ? data.authorId : current.authorId,
+    totalBooks: books.length,
+    books,
+    completedAt: books.length > 0 && books.every((b) => b.owned)
+      ? (current.completedAt ?? new Date().toISOString())
+      : null,
+  }
+
+  await col().replace(id, updated)
+  logger.info('[series] updated', { id })
+  return withCompletion(updated)
+}
+
+// ------------------------------------------------------------------------------
 // Mark book owned / unowned
 // ------------------------------------------------------------------------------
 export async function markBookOwned(id, order, { owned }) {

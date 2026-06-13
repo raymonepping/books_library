@@ -12,6 +12,10 @@ export const seriesApi = {
 
   getMissing: (id) => api.get(`/series/${id}/missing`),
 
+  create: (data) => api.post('/series', data),
+
+  update: (id, data) => api.put(`/series/${id}`, data),
+
   markOwned: (id, order, owned) =>
     api.put(`/series/${id}/books/${order}`, { owned }),
 }
