@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import * as bookService from '../services/bookService.js'
-import { ensureAuthors } from '../services/authorService.js'
 import { ValidationError } from '../utils/errors.js'
 
 const router = Router()
@@ -17,8 +16,6 @@ router.post('/', async (req, res) => {
   const { title } = req.body
   if (!title?.trim()) throw new ValidationError('title is required')
   const book = await bookService.createBook(req.body)
-  // Fire-and-forget: create author stubs for any new author names
-  if (book.authors?.length) ensureAuthors(book.authors).catch(() => {})
   res.status(201).json({ success: true, data: book })
 })
 

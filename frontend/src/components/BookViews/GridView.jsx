@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import BookDetailPanel from './BookDetailPanel.jsx'
 import { spineColor } from './spineUtils.js'
+import { authorNames } from '../../utils/authors.js'
 
 export default function GridView({ books }) {
   const [selected, setSelected] = useState(null)
@@ -61,7 +62,7 @@ function BookCard({ book, isSelected, onSelect }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
           {book.authors?.length > 0 && (
             <p className="text-white/80 text-[11px] leading-snug line-clamp-1">
-              {book.authors.join(', ')}
+              {authorNames(book.authors).join(', ')}
             </p>
           )}
           {book.rating > 0 && (
@@ -78,8 +79,8 @@ function BookCard({ book, isSelected, onSelect }) {
         <p className="text-ice/90 text-xs font-semibold leading-snug line-clamp-2 group-hover:text-ice transition-colors">
           {book.title}
         </p>
-        {book.authors?.[0] && (
-          <p className="text-ice/35 text-[11px] mt-0.5 truncate">{book.authors[0]}</p>
+        {book.authors?.length > 0 && (
+          <p className="text-ice/35 text-[11px] mt-0.5 truncate">{authorNames(book.authors)[0]}</p>
         )}
       </div>
     </div>

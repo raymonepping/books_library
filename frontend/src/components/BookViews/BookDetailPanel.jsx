@@ -5,6 +5,7 @@ import { booksApi } from '../../api/books.js'
 import { useLibraryStore } from '../../store/useLibraryStore.js'
 import { useUIStore } from '../../store/useUIStore.js'
 import { spineColor } from './spineUtils.js'
+import { authorNames } from '../../utils/authors.js'
 
 const STATUS_ACTIONS = [
   { status: 'read',           icon: BookCheck,  label: 'Read'         },
@@ -173,7 +174,7 @@ function ViewPanel({ book, bg, fg, saving, confirmDelete, onStatus, onRating, on
         <h2 className="font-serif text-ice text-lg leading-snug">{book.title}</h2>
         {book.subtitle && <p className="font-serif text-ice/50 text-sm italic">{book.subtitle}</p>}
         {book.authors?.length > 0 && (
-          <p className="text-ice/60 text-sm">{book.authors.join(', ')}</p>
+          <p className="text-ice/60 text-sm">{authorNames(book.authors).join(', ')}</p>
         )}
         <div className="flex flex-wrap gap-x-3 text-ice/50 text-xs mt-1">
           {book.publishedYear && <span>{book.publishedYear}</span>}
@@ -269,7 +270,7 @@ function EditForm({ book, bg, fg, onSave, onCancel, saving }) {
   const [form, setForm] = useState({
     title:         book.title ?? '',
     subtitle:      book.subtitle ?? '',
-    authors:       (book.authors ?? []).join(', '),
+    authors:       authorNames(book.authors).join(', '),
     genres:        (book.genres ?? []).join(', '),
     publishedYear: book.publishedYear ?? '',
     pageCount:     book.pageCount ?? '',

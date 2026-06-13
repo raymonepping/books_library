@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Badge from '../ui/Badge.jsx'
 import BookDetailPanel from './BookDetailPanel.jsx'
 import { spineColor } from './spineUtils.js'
+import { authorNames } from '../../utils/authors.js'
 
 export default function ListView({ books }) {
   const [selected, setSelected] = useState(null)
@@ -51,7 +52,7 @@ function BookRow({ book, isSelected, onSelect }) {
           {book.title}
         </p>
         <p className="text-ice/40 text-xs mt-0.5 truncate">
-          {[book.authors?.[0], book.publishedYear].filter(Boolean).join(' · ')}
+          {[authorNames(book.authors)[0], book.publishedYear].filter(Boolean).join(' · ')}
         </p>
         {book.genres?.[0] && (
           <p className="text-ice/25 text-[11px] mt-0.5 truncate capitalize">{book.genres[0]}</p>

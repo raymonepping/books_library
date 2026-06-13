@@ -122,16 +122,19 @@ export async function createAuthor(data) {
 }
 
 // ------------------------------------------------------------------------------
-// Ensure author stubs exist for a list of author names (idempotent)
-// Called automatically when a book is created/updated.
+// Ensure author stubs exist and return [{id, name}] for embedding in book docs.
+// Accepts strings, {name} objects, or {id, name} objects — idempotent.
 // ------------------------------------------------------------------------------
-export async function ensureAuthors(names = []) {
-  await Promise.all(names.map(async (name) => {
-    if (!name?.trim()) return
-    const slug = slugify(name.trim())
+export async function ensureAuthors(input = []) {
+  const names = input
+    .map(a => (typeof a === 'string' ? a : a?.name ?? '').trim())
+    .filter(Boolean)
+
+  const results = await Promise.all(names.map(async (name) => {
+    const slug = slugify(name)
     const id = authorId(slug)
     const doc = {
-      id, type: 'author', name: name.trim(), slug,
+      id, type: 'author', name, slug,
       bio: '', birthYear: null, nationality: '',
       photoUrl: '', website: '', genres: [], seriesIds: [],
     }
@@ -140,9 +143,11 @@ export async function ensureAuthors(names = []) {
       logger.info('[authors] auto-created stub', { id, name })
     } catch (err) {
       if (!(err instanceof couchbase.DocumentExistsError)) throw err
-      // Already exists — fine
     }
+    return { id, name }
   }))
+
+  return results
 }
 
 // ------------------------------------------------------------------------------
@@ -151,8 +156,9 @@ export async function ensureAuthors(names = []) {
 const KS_BOOKS = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`books\``
 
 export async function syncAuthorsFromBooks() {
+  // books.authors is now [{id, name}] — unnest and extract names
   const res = await getCluster().query(
-    `SELECT DISTINCT RAW a FROM ${KS_BOOKS} AS b UNNEST b.authors AS a WHERE a IS NOT NULL`
+    `SELECT DISTINCT RAW a.name FROM ${KS_BOOKS} AS b UNNEST b.authors AS a WHERE a.name IS NOT NULL`
   )
   const names = res.rows.filter(Boolean)
   await ensureAuthors(names)

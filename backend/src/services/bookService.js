@@ -4,6 +4,7 @@ import { bookId } from '../utils/idGenerator.js'
 import { NotFoundError, ValidationError } from '../utils/errors.js'
 import { logger } from '../config/logger.js'
 import { downloadAndStoreCover } from './coverService.js'
+import { ensureAuthors } from './authorService.js'
 
 const BUCKET = process.env.COUCHBASE_BUCKET || 'library'
 const SCOPE_NAME = process.env.COUCHBASE_SCOPE || 'library_scope'
@@ -73,7 +74,7 @@ export async function listBooks({ genre, status, owned, author, series, sort, pa
     params.series = series
   }
   if (author) {
-    conditions.push('ANY a IN b.authors SATISFIES a = $author END')
+    conditions.push('ANY a IN b.authors SATISFIES a.id = $author END')
     params.author = author
   }
   if (genre) {
@@ -113,6 +114,7 @@ export async function getBook(id) {
 export async function createBook(data) {
   const id = bookId()
   const now = new Date().toISOString()
+  const authorObjs = await ensureAuthors(data.authors ?? [])
   const doc = {
     id,
     type: 'book',
@@ -122,7 +124,7 @@ export async function createBook(data) {
     subtitle: data.subtitle ?? '',
     seriesId: data.seriesId ?? null,
     seriesOrder: data.seriesOrder ?? null,
-    authors: data.authors ?? [],
+    authors: authorObjs,
     genres: data.genres ?? [],
     tags: data.tags ?? [],
     language: data.language ?? '',
@@ -172,6 +174,10 @@ export async function updateBook(id, data) {
     readStatus: updates.readStatus && READ_STATUSES.has(updates.readStatus)
       ? updates.readStatus
       : existing.content.readStatus,
+    // Normalize authors to [{id, name}] objects if caller sent strings
+    authors: updates.authors !== undefined
+      ? await ensureAuthors(updates.authors)
+      : existing.content.authors,
   }
   updated.updatedAt = new Date().toISOString()
   await col().replace(id, updated)

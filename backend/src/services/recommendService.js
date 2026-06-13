@@ -137,7 +137,7 @@ export async function recommendAuthors(authorId, { limit = 5 } = {}) {
     `SELECT DISTINCT RAW g
      FROM \`library\`.\`library_scope\`.\`books\` b
      UNNEST b.genres AS g
-     WHERE ANY a IN b.authors SATISFIES a = $authorId END`,
+     WHERE ANY a IN b.authors SATISFIES a.id = $authorId END`,
     { parameters: { authorId } }
   )
   const seedGenres = genreResult.rows ?? []
@@ -148,7 +148,7 @@ export async function recommendAuthors(authorId, { limit = 5 } = {}) {
     `SELECT META(a).id AS id, a.name, a.nationality, a.photoUrl, a.bio,
             (CASE WHEN a.nationality = $nationality AND a.nationality IS NOT MISSING THEN 2 ELSE 0 END) AS natScore,
             (SELECT RAW COUNT(1) FROM \`library\`.\`library_scope\`.\`books\` b2
-             WHERE ANY auth IN b2.authors SATISFIES auth = META(a).id END
+             WHERE ANY auth IN b2.authors SATISFIES auth.id = META(a).id END
                AND ANY g IN b2.genres SATISFIES g IN $seedGenres END)[0] AS bookOverlap
      FROM \`library\`.\`library_scope\`.\`authors\` a
      WHERE META(a).id != $authorId
