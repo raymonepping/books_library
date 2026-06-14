@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Star, BookOpen, BookMarked, BookCheck, BookX, Trash2, Pencil, Check, Undo2 } from 'lucide-react'
+import { X, Star, BookOpen, BookMarked, BookCheck, BookX, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import { booksApi } from '../../api/books.js'
 import { useLibraryStore } from '../../store/useLibraryStore.js'
@@ -162,6 +163,7 @@ export default function BookDetailPanel({ book, onClose }) {
             onStatus={setStatus}
             onRating={setRating}
             onDelete={handleDelete}
+            onClose={onClose}
           />
         )}
       </aside>
@@ -171,9 +173,10 @@ export default function BookDetailPanel({ book, onClose }) {
 
 /* ── View mode ───────────────────────────────────────────────────────────────── */
 
-function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelete }) {
+function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelete, onClose }) {
   const [imgError, setImgError] = useState(false)
   const showCover = book.coverUrl && !imgError
+  const navigate  = useNavigate()
 
   return (
     <>
@@ -287,8 +290,19 @@ function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelet
         </div>
       )}
 
+      {/* Find Similar */}
+      <div className="px-5 pt-4">
+        <button
+          onClick={() => { onClose(); navigate('/discover', { state: { seedBook: book } }) }}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded text-sm transition-colors cursor-pointer text-ice/50 hover:text-amber hover:bg-amber/5 border border-smoke-light hover:border-amber/30"
+        >
+          <Sparkles size={14} className="shrink-0" />
+          Find similar books
+        </button>
+      </div>
+
       {/* Delete — no confirm, just instant with undo toast */}
-      <div className="px-5 pb-6 mt-auto pt-4">
+      <div className="px-5 pb-6 pt-2">
         <button
           onClick={onDelete}
           disabled={saving}

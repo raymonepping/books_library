@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Search, X, Sparkles, ArrowRight } from 'lucide-react'
 import { searchApi } from '../api/search.js'
 import { booksApi } from '../api/books.js'
@@ -18,6 +18,8 @@ const DEBOUNCE_MS = 320
 const MIN_CHARS = 2
 
 export default function DiscoverPage() {
+  const location = useLocation()
+
   const [query, setQuery]         = useState('')
   const [type, setType]           = useState('')
   const [results, setResults]     = useState(null)   // null = no search yet
@@ -37,6 +39,16 @@ export default function DiscoverPage() {
     const h = () => inputRef.current?.focus()
     document.addEventListener('focus-discover-search', h)
     return () => document.removeEventListener('focus-discover-search', h)
+  }, [])
+
+  // Auto-trigger recs when navigated here from BookDetailPanel "Find Similar"
+  useEffect(() => {
+    const seed = location.state?.seedBook
+    if (seed) {
+      handleFindSimilar(seed)
+      window.history.replaceState({}, '')  // clear state so it doesn't re-trigger on back
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Books already in library — used for "picks from your shelf" in empty state
@@ -410,8 +422,14 @@ function RecsPanel({ seed, recs, loading, onClose, inline = false }) {
 
       {/* Rec list */}
       <div className="bg-smoke border border-smoke-light rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-smoke-light">
+        <div className="px-4 py-3 border-b border-smoke-light flex items-center justify-between">
           <p className="text-ice/40 text-xs uppercase tracking-widest">You might like</p>
+          {recs?.tier === 'genre+embedding' && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber/10 text-amber text-[10px] font-medium">
+              <Sparkles size={9} />
+              AI
+            </span>
+          )}
         </div>
 
         {loading && (
@@ -429,16 +447,14 @@ function RecsPanel({ seed, recs, loading, onClose, inline = false }) {
         {!loading && recs?.recommendations?.length > 0 && (
           <div className="divide-y divide-smoke-light">
             {recs.recommendations.map(rec => (
-              <RecRow key={rec.id} rec={rec} />
+              <RecRow key={rec.id} rec={rec} showScore={recs.tier === 'genre+embedding'} />
             ))}
           </div>
         )}
 
-        {recs && (
+        {recs && recs.tier === 'genre' && (
           <div className="px-4 py-2 border-t border-smoke-light">
-            <p className="text-ice/20 text-[10px]">
-              Tier: {recs.tier === 3 ? 'Genre + AI similarity' : 'Genre overlap'}
-            </p>
+            <p className="text-ice/20 text-[10px]">Genre-based · AI unavailable</p>
           </div>
         )}
       </div>
@@ -446,23 +462,41 @@ function RecsPanel({ seed, recs, loading, onClose, inline = false }) {
   )
 }
 
-function RecRow({ rec }) {
+function RecRow({ rec, showScore = false }) {
   const { bg } = spineColor(rec)
+  const pct    = rec.score != null ? Math.round(rec.score * 100) : null
+  const reason = rec.matchedGenres?.length
+    ? rec.matchedGenres.slice(0, 2).map(g => g.charAt(0).toUpperCase() + g.slice(1)).join(' · ')
+    : rec.genres?.[0]
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-smoke-light transition-colors">
-      <div className="w-6 h-9 rounded shrink-0" style={{ backgroundColor: bg }} />
+    <div className="flex items-start gap-3 px-4 py-3 hover:bg-smoke-light transition-colors">
+      <div className="w-6 h-9 rounded shrink-0 mt-0.5" style={{ backgroundColor: bg }} />
       <div className="flex-1 min-w-0">
-        <p className="text-ice/80 text-xs font-medium truncate">{rec.title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          {rec.genres?.[0] && (
-            <span className="text-ice/30 text-[10px] capitalize">{rec.genres[0]}</span>
-          )}
-          {rec.blendScore != null && (
-            <span className="text-ice/20 text-[10px]">· {Math.round(rec.blendScore * 100)}%</span>
-          )}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-ice/80 text-xs font-medium leading-snug line-clamp-2 flex-1">{rec.title}</p>
+          {rec.readStatus && <Badge status={rec.readStatus} />}
         </div>
+
+        {reason && (
+          <p className="text-ice/30 text-[10px] mt-0.5 truncate">{reason}</p>
+        )}
+
+        {showScore && pct != null && (
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex-1 h-[3px] bg-smoke-dark rounded overflow-hidden">
+              <div
+                className="h-full rounded"
+                style={{
+                  width: `${pct}%`,
+                  background: `linear-gradient(to right, #4a6fa5, #e8a020)`,
+                }}
+              />
+            </div>
+            <span className="text-ice/30 text-[10px] tabular-nums w-7 text-right">{pct}%</span>
+          </div>
+        )}
       </div>
-      {rec.readStatus && <Badge status={rec.readStatus} />}
     </div>
   )
 }
