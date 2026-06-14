@@ -31,6 +31,7 @@ export default function DiscoverPage() {
 
   const inputRef = useRef(null)
   const debounceRef = useRef(null)
+  const abortRef = useRef(null)
 
   // Books already in library — used for "picks from your shelf" in empty state
   const books = useLibraryStore(s => s.books)
@@ -38,12 +39,15 @@ export default function DiscoverPage() {
   // ── Debounced search ──────────────────────────────────────────────────────
   const runSearch = useCallback(async (q, t) => {
     if (q.length < MIN_CHARS) { setResults(null); setSearchErr(null); return }
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
     setSearching(true)
     setSearchErr(null)
     try {
-      const data = await searchApi.search({ q, type: t || undefined, limit: 20 })
+      const data = await searchApi.search({ q, type: t || undefined, limit: 20 }, abortRef.current.signal)
       setResults(data)
     } catch (err) {
+      if (err.name === 'AbortError') return
       setSearchErr(err.message)
       setResults(null)
     } finally {

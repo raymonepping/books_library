@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { booksApi } from '../api/books.js'
 import { authorsApi } from '../api/authors.js'
 
+let _fetchAbort = null
+
 export const useLibraryStore = create((set, get) => ({
   // ── Books ──────────────────────────────────────────────────────────────────
   books: [],
@@ -13,13 +15,16 @@ export const useLibraryStore = create((set, get) => ({
   booksError: null,
 
   fetchBooks: async (overrides = {}) => {
+    _fetchAbort?.abort()
+    _fetchAbort = new AbortController()
     const { booksPage, booksLimit, booksFilters } = get()
     const params = { page: booksPage, limit: booksLimit, ...booksFilters, ...overrides }
     set({ booksLoading: true, booksError: null })
     try {
-      const data = await booksApi.list(params)
+      const data = await booksApi.list(params, _fetchAbort.signal)
       set({ books: data.books, totalBooks: data.total, booksLoading: false })
     } catch (err) {
+      if (err.name === 'AbortError') return
       set({ booksError: err.message, booksLoading: false })
     }
   },

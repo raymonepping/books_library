@@ -10,7 +10,6 @@ import {
 } from 'recharts'
 import { dashboardApi } from '../api/dashboard.js'
 import { booksApi } from '../api/books.js'
-import { useLibraryStore } from '../store/useLibraryStore.js'
 import { useUIStore } from '../store/useUIStore.js'
 import Spinner from '../components/ui/Spinner.jsx'
 import { coverPlaceholder } from '../utils/coverPlaceholder.js'
@@ -33,9 +32,8 @@ export default function DashboardPage() {
   const [error, setError]     = useState(null)
   const [chartRange, setChartRange] = useState(12)
   const [chartsLoading, setChartsLoading] = useState(false)
+  const [reading, setReading] = useState([])
 
-  const books   = useLibraryStore(s => s.books)
-  const reading = books.filter(b => b.readStatus === 'reading').slice(0, 6)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -43,6 +41,10 @@ export default function DashboardPage() {
       .then(setStats)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+
+    booksApi.list({ status: 'reading', limit: 6 })
+      .then(d => setReading(d.books ?? []))
+      .catch(() => {})
   }, [])
 
   const loadCharts = useCallback(async (range) => {

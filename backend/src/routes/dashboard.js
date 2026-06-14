@@ -14,10 +14,10 @@ router.get('/', async (req, res) => {
     cluster.query(`
       SELECT
         COUNT(1)                                                          AS totalBooks,
-        SUM(CASE WHEN b.readStatus = 'read'           THEN 1 ELSE 0 END) AS readCount,
-        SUM(CASE WHEN b.readStatus = 'reading'        THEN 1 ELSE 0 END) AS readingCount,
-        SUM(CASE WHEN b.readStatus = 'want-to-read'   THEN 1 ELSE 0 END) AS wantToReadCount,
-        SUM(CASE WHEN b.readStatus = 'did-not-finish' THEN 1 ELSE 0 END) AS dnfCount,
+        SUM(CASE WHEN b.readStatus IN ['read','finished']                         THEN 1 ELSE 0 END) AS readCount,
+        SUM(CASE WHEN b.readStatus = 'reading'                                    THEN 1 ELSE 0 END) AS readingCount,
+        SUM(CASE WHEN b.readStatus IN ['want-to-read','to-read']                  THEN 1 ELSE 0 END) AS wantToReadCount,
+        SUM(CASE WHEN b.readStatus IN ['did-not-finish','abandoned']               THEN 1 ELSE 0 END) AS dnfCount,
         SUM(CASE WHEN b.rating IS NOT MISSING         THEN b.rating ELSE 0 END) AS ratingSum,
         SUM(CASE WHEN b.rating IS NOT MISSING         THEN 1 ELSE 0 END) AS ratingCount,
         SUM(CASE WHEN b.owned = TRUE                  THEN 1 ELSE 0 END) AS ownedCount,

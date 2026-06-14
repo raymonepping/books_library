@@ -85,6 +85,8 @@ export async function createSeries(data) {
       seriesOrder: b.seriesOrder,
       bookId: b.bookId ?? null,
       title: b.title ?? '',
+      originalTitle: b.originalTitle ?? null,
+      altTitles: b.altTitles ?? [],
       isbn: b.isbn ?? '',
       publishedYear: b.publishedYear ?? null,
       owned: b.owned ?? false,

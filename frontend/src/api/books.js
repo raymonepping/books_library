@@ -1,11 +1,12 @@
 import { api } from './client.js'
 
 export const booksApi = {
-  list: (params = {}) => {
+  list: (params = {}, signal) => {
+    const { signal: _sig, ...rest } = params  // pull signal out if accidentally passed in params
     const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v != null && v !== '')
+      Object.entries(rest).filter(([, v]) => v != null && v !== '')
     ).toString()
-    return api.get(`/books${qs ? `?${qs}` : ''}`)
+    return api.get(`/books${qs ? `?${qs}` : ''}`, { signal: signal ?? _sig })
   },
 
   get: (id) => api.get(`/books/${id}`),

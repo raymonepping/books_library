@@ -102,15 +102,23 @@ export default function SeriesPage() {
         </div>
       </div>
 
-      {/* Editor panel */}
+      {/* Editor panel — right sidebar on md+, full-screen overlay on mobile */}
       {editingSeries && (
-        <div className="w-96 shrink-0 border-l border-smoke-light h-full">
-          <SeriesEditor
-            series={editorSeries}
-            onClose={() => setEditingSeries(null)}
-            onSaved={handleSaved}
+        <>
+          {/* Mobile backdrop */}
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-noir/60 backdrop-blur-[2px]"
+            aria-hidden="true"
+            onClick={() => setEditingSeries(null)}
           />
-        </div>
+          <div className="fixed inset-0 z-50 md:static md:z-auto md:inset-auto md:w-96 md:shrink-0 md:border-l md:border-smoke-light md:h-full">
+            <SeriesEditor
+              series={editorSeries}
+              onClose={() => setEditingSeries(null)}
+              onSaved={handleSaved}
+            />
+          </div>
+        </>
       )}
     </div>
   )
@@ -123,16 +131,22 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
   const pct = series.completionPct ?? 0
   const isComplete = series.completedAt != null
 
+  const headingId = `series-${series.id}-heading`
+  const listId    = `series-${series.id}-books`
+
   return (
     <div className="bg-smoke border border-smoke-light rounded-lg overflow-hidden">
-      {/* Card header — click anywhere to expand/collapse */}
-      <div
-        className="px-5 py-4 cursor-pointer select-none"
+      {/* Card header */}
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        aria-controls={listId}
+        className="w-full text-left px-5 py-4 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-steel"
         onClick={() => setCollapsed(c => !c)}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-serif text-ice text-base font-semibold">{series.name}</h2>
+            <h2 id={headingId} className="font-serif text-ice text-base font-semibold">{series.name}</h2>
             <p className="text-ice/40 text-xs mt-0.5">
               {series.ownedCount ?? 0} of {series.totalBooks} owned
               {isComplete && (
@@ -142,19 +156,23 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-ice/50 text-sm font-mono">{Math.round(pct)}%</span>
-            <button
+            <span
+              role="button"
+              tabIndex={0}
               onClick={e => { e.stopPropagation(); onEdit() }}
-              title="Edit series"
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onEdit() } }}
+              aria-label={`Edit ${series.name}`}
               className="text-ice/30 hover:text-amber transition-colors cursor-pointer"
             >
               <Pencil size={14} />
-            </button>
+            </span>
             <ChevronDown
               size={16}
               className={[
                 'text-ice/30 transition-transform duration-200',
                 collapsed ? '' : 'rotate-180',
               ].join(' ')}
+              aria-hidden="true"
             />
           </div>
         </div>
@@ -169,11 +187,11 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
             }}
           />
         </div>
-      </div>
+      </button>
 
       {/* Book list — collapsible */}
       {!collapsed && series.books?.length > 0 && (
-        <div className="divide-y divide-smoke-light border-t border-smoke-light">
+        <div id={listId} className="divide-y divide-smoke-light border-t border-smoke-light">
           {series.books
             .slice()
             .sort((a, b) => a.seriesOrder - b.seriesOrder)

@@ -214,10 +214,17 @@ export async function updateBookStatus(id, { readStatus, progress, rating }) {
   if (readStatus !== undefined) {
     if (!READ_STATUSES.has(readStatus)) throw new ValidationError(`Invalid readStatus: ${readStatus}`)
     specs.push(couchbase.MutateInSpec.upsert('readStatus', readStatus))
-    // Record when a book is finished; clear if moved back to an unfinished state
-    specs.push(couchbase.MutateInSpec.upsert('finishedAt',
-      readStatus === 'read' ? new Date().toISOString() : null
-    ))
+    if (readStatus === 'read') {
+      // Only stamp finishedAt if it isn't already set — preserves historical date
+      // when the user re-selects "read" after temporarily switching status
+      const lookup = await col().lookupIn(id, [couchbase.LookupInSpec.get('finishedAt')])
+      const existingFinishedAt = lookup.content[0]?.value
+      if (!existingFinishedAt) {
+        specs.push(couchbase.MutateInSpec.upsert('finishedAt', new Date().toISOString()))
+      }
+    } else {
+      specs.push(couchbase.MutateInSpec.upsert('finishedAt', null))
+    }
     specs.push(couchbase.MutateInSpec.upsert('updatedAt', new Date().toISOString()))
   }
   if (progress !== undefined) {
