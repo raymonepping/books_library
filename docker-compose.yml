@@ -56,7 +56,10 @@ services:
 
   # ── React SPA via Nginx ───────────────────────────────────────────────────────
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_TOKEN: ${VITE_API_TOKEN:-}
     image: ${DOCKERHUB_NAMESPACE:-repping}/bibliotheek-frontend:${BIBLIOTHEEK_VERSION:-latest}
     container_name: bibliotheek-frontend
     ports:
