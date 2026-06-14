@@ -4,7 +4,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 
-import { connectCouchbase, getCluster } from './config/couchbase.js'
+import { connectCouchbase, getCluster, startHealthPoller } from './config/couchbase.js'
 import { watchSecrets } from './utils/secretWatcher.js'
 import { logger } from './config/logger.js'
 import { requestId } from './middleware/requestId.js'
@@ -66,6 +66,7 @@ app.use(errorHandler)
 async function start() {
   logger.info(`[app] starting in ${config.NODE_ENV} mode`)
   await connectCouchbase()
+  startHealthPoller()
   watchSecrets()
 
   const server = app.listen(PORT, () => logger.info(`[app] listening on :${PORT}`))
