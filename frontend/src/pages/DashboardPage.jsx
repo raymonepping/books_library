@@ -13,6 +13,9 @@ import { booksApi } from '../api/books.js'
 import { useUIStore } from '../store/useUIStore.js'
 import Spinner from '../components/ui/Spinner.jsx'
 import { coverPlaceholder } from '../utils/coverPlaceholder.js'
+import { useCountUp } from '../hooks/useCountUp.js'
+import ReadingGoal from '../components/dashboard/ReadingGoal.jsx'
+import ReadingHeatmap from '../components/dashboard/ReadingHeatmap.jsx'
 
 const AMBER  = '#e8a020'
 const BLOOD  = '#c0392b'
@@ -32,7 +35,8 @@ export default function DashboardPage() {
   const [error, setError]     = useState(null)
   const [chartRange, setChartRange] = useState(12)
   const [chartsLoading, setChartsLoading] = useState(false)
-  const [reading, setReading] = useState([])
+  const [reading,       setReading]       = useState([])
+  const [heatmap,       setHeatmap]       = useState(null)
 
   const navigate = useNavigate()
 
@@ -44,6 +48,10 @@ export default function DashboardPage() {
 
     booksApi.list({ status: 'reading', limit: 6 })
       .then(d => setReading(d.books ?? []))
+      .catch(() => {})
+
+    dashboardApi.getHeatmap()
+      .then(d => setHeatmap(d))
       .catch(() => {})
   }, [])
 
@@ -107,6 +115,12 @@ export default function DashboardPage() {
                 <ReadingProgress stats={stats} />
               </section>
             )}
+
+            {/* Reading goal */}
+            <section>
+              <SectionTitle>Reading goal</SectionTitle>
+              <ReadingGoal readThisYear={stats.readThisYear} />
+            </section>
           </>
         )}
 
@@ -217,6 +231,16 @@ export default function DashboardPage() {
               </section>
             )}
           </>
+        )}
+
+        {/* Reading heatmap */}
+        {heatmap?.days?.length > 0 && (
+          <section>
+            <SectionTitle>Reading activity</SectionTitle>
+            <div className="overflow-x-auto">
+              <ReadingHeatmap days={heatmap.days} />
+            </div>
+          </section>
         )}
 
         {/* Genre breakdown */}
@@ -377,14 +401,17 @@ const COLOR_MAP = {
 }
 
 function StatCard({ icon: Icon, label, value, color }) {
-  const c = COLOR_MAP[color] ?? COLOR_MAP.ice
+  const c          = COLOR_MAP[color] ?? COLOR_MAP.ice
+  const isNumeric  = typeof value === 'number'
+  const displayed  = useCountUp(isNumeric ? value : 0, { duration: 900, enabled: isNumeric })
+  const shown      = isNumeric ? displayed : value
   return (
     <div className={`rounded border ${c.border} ${c.bg} p-5 flex flex-col gap-2`}>
       <div className="flex items-center justify-between">
         <span className="text-ice/40 text-xs uppercase tracking-widest">{label}</span>
         <Icon size={14} className={`${c.text} opacity-60`} />
       </div>
-      <span className={`font-serif text-3xl font-bold ${c.text}`}>{value}</span>
+      <span className={`font-serif text-3xl font-bold ${c.text} tabular-nums`}>{shown}</span>
     </div>
   )
 }

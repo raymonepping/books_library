@@ -147,4 +147,38 @@ router.get('/charts', async (req, res) => {
   res.json({ success: true, data: { monthly, ratings } })
 })
 
+// GET /api/dashboard/heatmap?months=12 — daily book completion counts (GitHub-style grid)
+router.get('/heatmap', async (req, res) => {
+  const cluster = getCluster()
+  const months  = Math.max(1, Math.min(24, parseInt(req.query.months) || 12))
+
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - months + 1)
+  cutoff.setDate(1)
+  cutoff.setHours(0, 0, 0, 0)
+  const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+  const result = await cluster.query(`
+    SELECT SUBSTR(b.finishedAt, 0, 10) AS day, COUNT(1) AS count
+    FROM ${KS} AS b
+    WHERE (b.readStatus IN ['read', 'finished'])
+      AND b.finishedAt IS NOT NULL
+      AND b.finishedAt >= "${cutoffStr}"
+    GROUP BY SUBSTR(b.finishedAt, 0, 10)
+    ORDER BY day
+  `)
+
+  const dayMap = new Map(result.rows.map(r => [r.day, r.count]))
+  const days = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  for (let d = new Date(cutoff); d <= today; d.setDate(d.getDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10)
+    days.push({ date: iso, count: dayMap.get(iso) ?? 0 })
+  }
+
+  res.json({ success: true, data: { days } })
+})
+
 export default router

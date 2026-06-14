@@ -4,30 +4,40 @@ import { authorNames } from '../../utils/authors.js'
 import { coverPlaceholder } from '../../utils/coverPlaceholder.js'
 import { useUIStore } from '../../store/useUIStore.js'
 
-export default function GridView({ books }) {
-  const [selected, setSelected] = useState(null)
+export default function GridView({ books, selectMode = false, selectedIds, onToggleSelect }) {
+  const [panelBook, setPanelBook] = useState(null)
   const density = useUIStore(s => s.booksDensity)
   const minPx = density === 'compact' ? '120px' : '155px'
+
+  function handleCardClick(book) {
+    if (selectMode) {
+      onToggleSelect?.(book.id)
+    } else {
+      setPanelBook(s => s?.id === book.id ? null : book)
+    }
+  }
 
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${minPx}, 1fr))`, gap: density === 'compact' ? 12 : 20 }}>
-        {books.map(book => (
+        {books.map((book, i) => (
           <BookCard
             key={book.id}
             book={book}
+            index={i}
             compact={density === 'compact'}
-            isSelected={selected?.id === book.id}
-            onSelect={() => setSelected(s => s?.id === book.id ? null : book)}
+            isSelected={selectMode ? selectedIds?.has(book.id) : panelBook?.id === book.id}
+            selectMode={selectMode}
+            onSelect={() => handleCardClick(book)}
           />
         ))}
       </div>
-      <BookDetailPanel book={selected} onClose={() => setSelected(null)} />
+      {!selectMode && <BookDetailPanel book={panelBook} onClose={() => setPanelBook(null)} />}
     </>
   )
 }
 
-function BookCard({ book, compact, isSelected, onSelect }) {
+function BookCard({ book, index, compact, isSelected, selectMode, onSelect }) {
   const { bg, fg, initials } = coverPlaceholder(book)
   const names = authorNames(book.authors)
   const [imgError, setImgError] = useState(false)
@@ -38,11 +48,12 @@ function BookCard({ book, compact, isSelected, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
-      aria-label={`${book.title}${names[0] ? `, ${names[0]}` : ''}`}
+      aria-label={`${book.title}${names[0] ? `, ${names[0]}` : ''}${selectMode ? (isSelected ? ' — selected' : ' — not selected') : ''}`}
       className={[
-        'group flex flex-col gap-2 cursor-pointer text-left bg-transparent border-0 p-0 w-full',
-        isSelected ? 'scale-[0.97]' : '',
+        'group flex flex-col gap-2 cursor-pointer text-left bg-transparent border-0 p-0 w-full card-enter',
+        !selectMode && isSelected ? 'scale-[0.97]' : '',
       ].join(' ')}
+      style={{ animationDelay: `${Math.min(index, 30) * 0.03}s` }}
     >
       {/* Cover */}
       <div
@@ -50,11 +61,23 @@ function BookCard({ book, compact, isSelected, onSelect }) {
           'w-full rounded-xl relative overflow-hidden',
           'shadow-lg shadow-black/40',
           'transition-all duration-200 ease-out',
-          'group-hover:shadow-2xl group-hover:shadow-black/60 group-hover:-translate-y-1',
-          isSelected ? 'ring-2 ring-amber ring-offset-2 ring-offset-noir' : '',
+          'group-hover:-translate-y-1.5 group-hover:scale-[1.02]',
+          isSelected && !selectMode ? 'ring-2 ring-amber ring-offset-2 ring-offset-noir' : '',
+          isSelected && selectMode  ? 'ring-2 ring-steel ring-offset-2 ring-offset-noir' : '',
         ].join(' ')}
-        style={{ aspectRatio: '2/3', backgroundColor: bg }}
+        style={{
+          aspectRatio: '2/3',
+          backgroundColor: bg,
+          boxShadow: undefined,
+        }}
       >
+        {/* Amber hover glow — via pseudo-like inner shadow using a sibling */}
+        <div
+          className="absolute inset-0 rounded-xl pointer-events-none transition-opacity duration-200 opacity-0 group-hover:opacity-100"
+          style={{ boxShadow: 'inset 0 0 0 0, 0 8px 32px rgba(232,160,32,0.18)' }}
+          aria-hidden="true"
+        />
+
         {showCover ? (
           <img
             src={book.coverUrl}
@@ -64,7 +87,6 @@ function BookCard({ book, compact, isSelected, onSelect }) {
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
-          /* Richer placeholder — palette swatch + initials + genre band */
           <div className="absolute inset-0 flex flex-col">
             <div className="flex-1 flex flex-col items-center justify-center p-3 gap-2">
               <span
@@ -82,12 +104,8 @@ function BookCard({ book, compact, isSelected, onSelect }) {
                 </span>
               )}
             </div>
-            {/* Genre colour band at bottom */}
             {book.genres?.[0] && (
-              <div
-                className="shrink-0 h-1.5 opacity-60"
-                style={{ backgroundColor: fg }}
-              />
+              <div className="shrink-0 h-1.5 opacity-60" style={{ backgroundColor: fg }} />
             )}
           </div>
         )}
@@ -102,7 +120,27 @@ function BookCard({ book, compact, isSelected, onSelect }) {
           )}
         </div>
 
-        <StatusDot status={book.readStatus} />
+        {/* Status indicator / progress ring */}
+        <StatusIndicator status={book.readStatus} progress={book.progress} pageCount={book.pageCount} />
+
+        {/* Select-mode check overlay */}
+        {selectMode && (
+          <div className={[
+            'absolute inset-0 transition-colors duration-150 flex items-end justify-end p-2',
+            isSelected ? 'bg-steel/20' : 'bg-transparent',
+          ].join(' ')}>
+            <span className={[
+              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150',
+              isSelected ? 'bg-steel border-steel' : 'bg-noir/60 border-white/30',
+            ].join(' ')}>
+              {isSelected && (
+                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Below cover */}
@@ -114,7 +152,7 @@ function BookCard({ book, compact, isSelected, onSelect }) {
           {book.title}
         </p>
         {names[0] && (
-          <p className={['text-ice/35 mt-0.5 truncate', compact ? 'text-[11px]' : 'text-[11px]'].join(' ')}>
+          <p className="text-ice/35 mt-0.5 truncate text-[11px]">
             {names[0]}
           </p>
         )}
@@ -123,19 +161,51 @@ function BookCard({ book, compact, isSelected, onSelect }) {
   )
 }
 
+/* ── Status indicator: dot for most statuses, mini progress ring for reading ── */
+
 const DOT_COLOR = {
   'read':           { bg: 'bg-amber',    shadow: 'shadow-amber/50'  },
-  'reading':        { bg: 'bg-blood',    shadow: 'shadow-blood/50'  },
   'want-to-read':   { bg: 'bg-steel',    shadow: 'shadow-steel/50'  },
   'did-not-finish': { bg: 'bg-ice/30',   shadow: ''                 },
   'to-read':        { bg: 'bg-steel',    shadow: 'shadow-steel/50'  },
   'finished':       { bg: 'bg-amber',    shadow: 'shadow-amber/50'  },
 }
 
-function StatusDot({ status }) {
+function StatusIndicator({ status, progress, pageCount }) {
+  if (status === 'reading' && pageCount > 0) {
+    const pct = Math.min(100, Math.round(((progress ?? 0) / pageCount) * 100))
+    return (
+      <span className="absolute top-1.5 right-1.5 drop-shadow-md">
+        <MiniProgressRing pct={pct} />
+      </span>
+    )
+  }
   const c = DOT_COLOR[status]
   if (!c) return null
+  return <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${c.bg} shadow-md ${c.shadow}`} />
+}
+
+function MiniProgressRing({ pct, size = 20 }) {
+  const r    = (size - 3.5) / 2
+  const circ = 2 * Math.PI * r
+  const dash = circ * (1 - pct / 100)
+  const cx   = size / 2
   return (
-    <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${c.bg} shadow-md ${c.shadow}`} />
+    <svg width={size} height={size}>
+      <circle cx={cx} cy={cx} r={r} fill="rgba(12,12,12,0.75)" stroke="rgba(255,255,255,0.12)" strokeWidth={2.5} />
+      <circle
+        cx={cx} cy={cx} r={r}
+        fill="none"
+        stroke="#c0392b"
+        strokeWidth={2.5}
+        strokeDasharray={circ}
+        strokeDashoffset={dash}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cx})`}
+      />
+      <text x={cx} y={cx + 3} textAnchor="middle" fill="rgba(255,255,255,0.9)" fontSize="5" fontFamily="system-ui,sans-serif">
+        {pct}
+      </text>
+    </svg>
   )
 }

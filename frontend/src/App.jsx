@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout/Layout.jsx'
 import Spinner from './components/ui/Spinner.jsx'
 
@@ -19,21 +19,30 @@ function PageFallback() {
   )
 }
 
+function AnimatedRoutes() {
+  const location = useLocation()
+  return (
+    <div key={location.pathname} className="route-enter h-full">
+      <Routes location={location}>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Navigate to="/books" replace />} />
+          <Route path="books"       element={<Suspense fallback={<PageFallback />}><BooksPage /></Suspense>} />
+          <Route path="authors"     element={<Suspense fallback={<PageFallback />}><AuthorsPage /></Suspense>} />
+          <Route path="authors/:id" element={<Suspense fallback={<PageFallback />}><AuthorProfilePage /></Suspense>} />
+          <Route path="series"      element={<Suspense fallback={<PageFallback />}><SeriesPage /></Suspense>} />
+          <Route path="discover"    element={<Suspense fallback={<PageFallback />}><DiscoverPage /></Suspense>} />
+          <Route path="dashboard"   element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+          <Route path="*"           element={<Suspense fallback={<PageFallback />}><NotFoundPage /></Suspense>} />
+        </Route>
+      </Routes>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/books" replace />} />
-          <Route path="books" element={<Suspense fallback={<PageFallback />}><BooksPage /></Suspense>} />
-          <Route path="authors" element={<Suspense fallback={<PageFallback />}><AuthorsPage /></Suspense>} />
-          <Route path="authors/:id" element={<Suspense fallback={<PageFallback />}><AuthorProfilePage /></Suspense>} />
-          <Route path="series" element={<Suspense fallback={<PageFallback />}><SeriesPage /></Suspense>} />
-          <Route path="discover" element={<Suspense fallback={<PageFallback />}><DiscoverPage /></Suspense>} />
-          <Route path="dashboard" element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
-          <Route path="*" element={<Suspense fallback={<PageFallback />}><NotFoundPage /></Suspense>} />
-        </Route>
-      </Routes>
+      <AnimatedRoutes />
     </BrowserRouter>
   )
 }

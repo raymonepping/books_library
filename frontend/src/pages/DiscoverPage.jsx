@@ -29,9 +29,15 @@ export default function DiscoverPage() {
   const [recs, setRecs]           = useState(null)
   const [recsLoading, setRecsLoading] = useState(false)
 
-  const inputRef = useRef(null)
+  const inputRef    = useRef(null)
   const debounceRef = useRef(null)
-  const abortRef = useRef(null)
+  const abortRef    = useRef(null)
+
+  useEffect(() => {
+    const h = () => inputRef.current?.focus()
+    document.addEventListener('focus-discover-search', h)
+    return () => document.removeEventListener('focus-discover-search', h)
+  }, [])
 
   // Books already in library — used for "picks from your shelf" in empty state
   const books = useLibraryStore(s => s.books)
