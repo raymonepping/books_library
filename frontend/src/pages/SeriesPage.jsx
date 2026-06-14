@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Layers, ShoppingCart, Pencil, Plus } from 'lucide-react'
+import { Layers, ShoppingCart, Pencil, Plus, ChevronDown } from 'lucide-react'
 import { seriesApi } from '../api/series.js'
 import SeriesEditor from '../components/series/SeriesEditor.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
@@ -119,13 +119,17 @@ export default function SeriesPage() {
 /* ── Series card ────────────────────────────────────────────────────────────── */
 
 function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
+  const [collapsed, setCollapsed] = useState(true)
   const pct = series.completionPct ?? 0
   const isComplete = series.completedAt != null
 
   return (
     <div className="bg-smoke border border-smoke-light rounded-lg overflow-hidden">
-      {/* Card header */}
-      <div className="px-5 py-4 border-b border-smoke-light">
+      {/* Card header — click anywhere to expand/collapse */}
+      <div
+        className="px-5 py-4 cursor-pointer select-none"
+        onClick={() => setCollapsed(c => !c)}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-serif text-ice text-base font-semibold">{series.name}</h2>
@@ -139,12 +143,19 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-ice/50 text-sm font-mono">{Math.round(pct)}%</span>
             <button
-              onClick={onEdit}
+              onClick={e => { e.stopPropagation(); onEdit() }}
               title="Edit series"
               className="text-ice/30 hover:text-amber transition-colors cursor-pointer"
             >
               <Pencil size={14} />
             </button>
+            <ChevronDown
+              size={16}
+              className={[
+                'text-ice/30 transition-transform duration-200',
+                collapsed ? '' : 'rotate-180',
+              ].join(' ')}
+            />
           </div>
         </div>
 
@@ -160,9 +171,9 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit }) {
         </div>
       </div>
 
-      {/* Book list */}
-      {series.books?.length > 0 && (
-        <div className="divide-y divide-smoke-light">
+      {/* Book list — collapsible */}
+      {!collapsed && series.books?.length > 0 && (
+        <div className="divide-y divide-smoke-light border-t border-smoke-light">
           {series.books
             .slice()
             .sort((a, b) => a.seriesOrder - b.seriesOrder)
