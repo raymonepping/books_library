@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, Search, Star, BookOpen } from 'lucide-react'
+import { X, Search, Star, BookOpen, AlertTriangle } from 'lucide-react'
 import { booksApi } from '../../api/books.js'
 import { useLibraryStore } from '../../store/useLibraryStore.js'
 import { useUIStore } from '../../store/useUIStore.js'
 import Button from '../ui/Button.jsx'
 import Spinner from '../ui/Spinner.jsx'
 import { spineColor } from '../BookViews/spineUtils.js'
+import { useFocusTrap } from '../../hooks/useFocusTrap.js'
+import { useScrollLock } from '../../hooks/useScrollLock.js'
 
 const TABS = ['ISBN search', 'Manual']
 
@@ -23,19 +25,26 @@ const EMPTY_MANUAL = {
 }
 
 export default function AddBookModal() {
-  const addBookOpen = useUIStore(s => s.addBookOpen)
+  const addBookOpen    = useUIStore(s => s.addBookOpen)
   const setAddBookOpen = useUIStore(s => s.setAddBookOpen)
-  const upsertBook = useLibraryStore(s => s.upsertBook)
-  const addToast = useUIStore(s => s.addToast)
+  const upsertBook     = useLibraryStore(s => s.upsertBook)
+  const books          = useLibraryStore(s => s.books)
+  const addToast       = useUIStore(s => s.addToast)
 
-  const [tab, setTab] = useState('ISBN search')
-  const [isbn, setIsbn] = useState('')
-  const [searchState, setSearchState] = useState('idle') // idle | searching | found | not-found
-  const [preview, setPreview] = useState(null)
+  const [tab, setTab]           = useState('ISBN search')
+  const [isbn, setIsbn]         = useState('')
+  // idle | searching | found | not-found | error
+  const [searchState, setSearchState] = useState('idle')
+  const [searchError, setSearchError] = useState(null)
+  const [preview, setPreview]   = useState(null)
   const [overrides, setOverrides] = useState({ readStatus: 'want-to-read', owned: false, rating: null })
-  const [manual, setManual] = useState(EMPTY_MANUAL)
-  const [saving, setSaving] = useState(false)
-  const isbnRef = useRef(null)
+  const [manual, setManual]     = useState(EMPTY_MANUAL)
+  const [saving, setSaving]     = useState(false)
+  const isbnRef  = useRef(null)
+  const modalRef = useRef(null)
+
+  useFocusTrap(modalRef, addBookOpen)
+  useScrollLock(addBookOpen)
 
   // Reset when modal opens
   useEffect(() => {
@@ -43,6 +52,7 @@ export default function AddBookModal() {
       setTab('ISBN search')
       setIsbn('')
       setSearchState('idle')
+      setSearchError(null)
       setPreview(null)
       setOverrides({ readStatus: 'want-to-read', owned: false, rating: null })
       setManual(EMPTY_MANUAL)
@@ -51,11 +61,11 @@ export default function AddBookModal() {
     }
   }, [addBookOpen])
 
-  // Escape to close
+  // Escape to close (useFocusTrap also handles Tab; Escape is separate)
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') setAddBookOpen(false) }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
   }, [setAddBookOpen])
 
   if (!addBookOpen) return null
@@ -67,6 +77,7 @@ export default function AddBookModal() {
     const q = isbn.trim()
     if (!q) return
     setSearchState('searching')
+    setSearchError(null)
     setPreview(null)
     try {
       const data = await booksApi.enrich(q)
@@ -77,13 +88,24 @@ export default function AddBookModal() {
         setSearchState('found')
         setOverrides(o => ({ ...o, readStatus: 'want-to-read', rating: null, owned: false }))
       }
-    } catch {
-      setSearchState('not-found')
+    } catch (err) {
+      // Distinguish "API returned no data" from a real network/server failure
+      setSearchState('error')
+      setSearchError(err.message)
     }
   }
 
   async function handleSaveFromIsbn() {
     if (!preview) return
+    // Duplicate ISBN check
+    const isbnToSave = (preview.isbn || preview.isbn13 || '').trim()
+    if (isbnToSave) {
+      const dup = books.find(b => b.isbn === isbnToSave)
+      if (dup) {
+        addToast(`"${dup.title}" already in your library with this ISBN`, 'warning')
+        return
+      }
+    }
     setSaving(true)
     try {
       const book = await booksApi.create({
@@ -118,6 +140,15 @@ export default function AddBookModal() {
   async function handleSaveManual(e) {
     e.preventDefault()
     if (!manual.title.trim()) return
+    // Duplicate ISBN check for manual entry
+    const isbnToSave = manual.isbn.trim()
+    if (isbnToSave) {
+      const dup = books.find(b => b.isbn === isbnToSave)
+      if (dup) {
+        addToast(`"${dup.title}" already in your library with this ISBN`, 'warning')
+        return
+      }
+    }
     setSaving(true)
     try {
       const book = await booksApi.create({
@@ -153,12 +184,22 @@ export default function AddBookModal() {
       />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <div className="bg-smoke border border-smoke-light rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col pointer-events-auto">
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 pointer-events-none">
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-book-title"
+          className="bg-smoke border border-smoke-light rounded-t-2xl sm:rounded-lg shadow-2xl w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col pointer-events-auto"
+        >
+          {/* Drag handle — mobile only */}
+          <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-smoke-light" />
+          </div>
 
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-smoke-light shrink-0">
-            <h2 className="font-serif text-ice text-lg">Add book</h2>
+            <h2 id="add-book-title" className="font-serif text-ice text-lg">Add book</h2>
             <button
               onClick={() => setAddBookOpen(false)}
               className="text-ice/40 hover:text-ice transition-colors cursor-pointer"
@@ -192,6 +233,7 @@ export default function AddBookModal() {
                 isbn={isbn}
                 setIsbn={setIsbn}
                 searchState={searchState}
+                searchError={searchError}
                 preview={preview}
                 overrides={overrides}
                 setOverrides={setOverrides}
@@ -199,7 +241,7 @@ export default function AddBookModal() {
                 onSave={handleSaveFromIsbn}
                 saving={saving}
                 isbnRef={isbnRef}
-                onNewSearch={() => { setSearchState('idle'); setPreview(null); setIsbn('') }}
+                onNewSearch={() => { setSearchState('idle'); setSearchError(null); setPreview(null); setIsbn('') }}
               />
             ) : (
               <ManualTab
@@ -219,7 +261,7 @@ export default function AddBookModal() {
 
 /* ── ISBN tab ───────────────────────────────────────────────────────────────── */
 
-function IsbnTab({ isbn, setIsbn, searchState, preview, overrides, setOverrides, onSearch, onSave, saving, isbnRef, onNewSearch }) {
+function IsbnTab({ isbn, setIsbn, searchState, searchError, preview, overrides, setOverrides, onSearch, onSave, saving, isbnRef, onNewSearch }) {
   return (
     <div className="p-6 space-y-5">
       {/* Search bar */}
@@ -229,6 +271,7 @@ function IsbnTab({ isbn, setIsbn, searchState, preview, overrides, setOverrides,
           value={isbn}
           onChange={e => setIsbn(e.target.value)}
           placeholder="ISBN-13 or ISBN-10"
+          aria-label="ISBN"
           disabled={searchState === 'searching' || !!preview}
           className="flex-1 bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice placeholder-ice/30 focus:outline-none focus:border-steel transition-colors disabled:opacity-50"
         />
@@ -245,9 +288,18 @@ function IsbnTab({ isbn, setIsbn, searchState, preview, overrides, setOverrides,
       </form>
 
       {searchState === 'not-found' && (
-        <p className="text-blood/80 text-sm">
-          No results found for this ISBN. Try manual entry.
+        <p className="text-ice/50 text-sm" role="status">
+          No book found for this ISBN — check the number or switch to manual entry.
         </p>
+      )}
+
+      {searchState === 'error' && (
+        <div className="flex items-start gap-2 p-3 rounded border border-blood/30 bg-blood/5" role="alert">
+          <AlertTriangle size={14} className="text-blood/80 shrink-0 mt-0.5" />
+          <p className="text-blood/80 text-sm">
+            Search failed — {searchError ?? 'network error'}. Check your connection and try again.
+          </p>
+        </div>
       )}
 
       {preview && (

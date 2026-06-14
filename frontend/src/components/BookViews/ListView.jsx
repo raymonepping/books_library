@@ -29,10 +29,14 @@ function BookRow({ book, isSelected, onSelect }) {
   const showCover = book.coverUrl && !imgError
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
+      aria-label={book.title}
       className={[
         'flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-150 cursor-pointer group',
+        'w-full text-left bg-transparent border-0',
         isSelected ? 'bg-white/8 ring-1 ring-amber/20' : 'hover:bg-white/[0.04]',
       ].join(' ')}
     >
@@ -76,6 +80,6 @@ function BookRow({ book, isSelected, onSelect }) {
         )}
         <Badge status={book.readStatus} />
       </div>
-    </div>
+    </button>
   )
 }

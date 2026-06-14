@@ -141,17 +141,17 @@ export default function DiscoverPage() {
         </div>
       </header>
 
-      {/* ── Body — two-column on wider screens ── */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      {/* ── Body — two-column on md+ ── */}
+      <div className="flex-1 overflow-y-auto px-6 py-6" style={{ paddingBottom: (seedBook || recsLoading) ? '0' : undefined }}>
         {searchErr && (
-          <p className="text-blood/80 text-sm mb-4 p-3 border border-blood/30 rounded bg-blood/5">
+          <p className="text-blood/80 text-sm mb-4 p-3 border border-blood/30 rounded bg-blood/5" role="alert">
             {searchErr}
           </p>
         )}
 
         <div className="flex gap-6 items-start">
           {/* Left: search results or empty state */}
-          <div className="flex-1 min-w-0 space-y-6">
+          <div className="flex-1 min-w-0 space-y-6 pb-6">
 
             {showEmptyState && shelfPicks.length > 0 && (
               <EmptyState books={shelfPicks} onFindSimilar={handleFindSimilar} />
@@ -168,7 +168,7 @@ export default function DiscoverPage() {
             )}
 
             {query.length > 0 && query.length < MIN_CHARS && (
-              <p className="text-ice/30 text-sm">Type at least {MIN_CHARS} characters…</p>
+              <p className="text-ice/30 text-sm" aria-live="polite">Type at least {MIN_CHARS} characters…</p>
             )}
 
             {results && (
@@ -180,17 +180,35 @@ export default function DiscoverPage() {
             )}
           </div>
 
-          {/* Right: recommendations panel */}
+          {/* Desktop-only right panel */}
           {(seedBook || recsLoading) && (
-            <RecsPanel
-              seed={seedBook}
-              recs={recs}
-              loading={recsLoading}
-              onClose={() => { setSeedBook(null); setRecs(null) }}
-            />
+            <div className="hidden md:block">
+              <RecsPanel
+                seed={seedBook}
+                recs={recs}
+                loading={recsLoading}
+                onClose={() => { setSeedBook(null); setRecs(null) }}
+              />
+            </div>
           )}
         </div>
       </div>
+
+      {/* Mobile bottom sheet for recs */}
+      {(seedBook || recsLoading) && (
+        <div className="md:hidden fixed inset-x-0 bottom-16 z-30 max-h-[60dvh] flex flex-col rounded-t-2xl bg-smoke border-t border-smoke-light shadow-2xl overflow-hidden">
+          <div className="flex justify-center pt-3 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-smoke-light" />
+          </div>
+          <RecsPanel
+            seed={seedBook}
+            recs={recs}
+            loading={recsLoading}
+            onClose={() => { setSeedBook(null); setRecs(null) }}
+            inline
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -309,10 +327,10 @@ function BookHit({ book, isSeeded, onFindSimilar }) {
         <button
           onClick={() => onFindSimilar(book)}
           title="Find similar books"
-          className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-steel hover:text-amber text-[10px] transition-all cursor-pointer"
+          className="flex items-center gap-1 text-steel/60 hover:text-amber text-[10px] transition-colors cursor-pointer group-hover:text-steel focus:text-amber"
         >
           <Sparkles size={11} />
-          Similar
+          <span>Similar</span>
         </button>
       </div>
     </div>
@@ -344,11 +362,11 @@ function AuthorHit({ author }) {
 
 /* ── Recommendations panel ──────────────────────────────────────────────────── */
 
-function RecsPanel({ seed, recs, loading, onClose }) {
+function RecsPanel({ seed, recs, loading, onClose, inline = false }) {
   const { bg: seedBg, fg: seedFg } = seed ? spineColor(seed) : { bg: '#2a2a2a', fg: '#e8eef2' }
 
   return (
-    <aside className="w-72 shrink-0 sticky top-0 self-start space-y-4">
+    <aside className={inline ? 'flex flex-col flex-1 overflow-hidden' : 'w-72 shrink-0 sticky top-0 self-start space-y-4'}>
       {/* Seed book */}
       <div className="bg-smoke border border-smoke-light rounded-lg p-4">
         <div className="flex items-start justify-between mb-3">

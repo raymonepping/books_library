@@ -84,3 +84,15 @@ h1, h2, h3 { font-family: var(--font-serif); }
 }
 .field-input:focus { border-color: var(--color-steel); }
 .field-input::placeholder { color: color-mix(in srgb, var(--color-ice) 30%, transparent); }
+
+/* ─── Reduced-motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       0.01ms !important;
+    scroll-behavior:           auto   !important;
+  }
+  /* Skeleton pulses — replace with static dim background */
+  .animate-pulse { animation: none !important; opacity: 0.4; }
+}

@@ -34,10 +34,13 @@ function BookCard({ book, compact, isSelected, onSelect }) {
   const showCover = book.coverUrl && !imgError
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
+      aria-label={`${book.title}${names[0] ? `, ${names[0]}` : ''}`}
       className={[
-        'group flex flex-col gap-2 cursor-pointer',
+        'group flex flex-col gap-2 cursor-pointer text-left bg-transparent border-0 p-0 w-full',
         isSelected ? 'scale-[0.97]' : '',
       ].join(' ')}
     >
@@ -106,17 +109,17 @@ function BookCard({ book, compact, isSelected, onSelect }) {
       <div className="px-0.5">
         <p className={[
           'text-ice/90 font-semibold leading-snug line-clamp-2 group-hover:text-ice transition-colors',
-          compact ? 'text-[10px]' : 'text-xs',
+          compact ? 'text-[11px]' : 'text-xs',
         ].join(' ')}>
           {book.title}
         </p>
         {names[0] && (
-          <p className={['text-ice/35 mt-0.5 truncate', compact ? 'text-[9px]' : 'text-[11px]'].join(' ')}>
+          <p className={['text-ice/35 mt-0.5 truncate', compact ? 'text-[11px]' : 'text-[11px]'].join(' ')}>
             {names[0]}
           </p>
         )}
       </div>
-    </div>
+    </button>
   )
 }
 
