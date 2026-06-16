@@ -1,13 +1,16 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { X } from 'lucide-react'
 import { useFilterDrawer } from '../../pages/BooksPage.jsx'
 import { useFocusTrap } from '../../hooks/useFocusTrap.js'
+import AutocompleteInput from '../ui/AutocompleteInput.jsx'
+import { booksApi } from '../../api/books.js'
 
 const SORT_OPTIONS = [
-  { value: 'addedAt',      label: 'Date added'     },
-  { value: 'title',        label: 'Title A–Z'      },
-  { value: 'rating',       label: 'Rating'         },
-  { value: 'publishedYear',label: 'Published year'  },
+  { value: 'addedAt',      label: 'Date added'    },
+  { value: 'title',        label: 'Title A–Z'     },
+  { value: 'author',       label: 'Author A–Z'    },
+  { value: 'rating',       label: 'Rating'        },
+  { value: 'publishedYear',label: 'Published year' },
 ]
 
 const STATUS_OPTIONS = [
@@ -18,9 +21,15 @@ const STATUS_OPTIONS = [
   { value: 'did-not-finish',label: 'Did not finish'},
 ]
 
+const INPUT_CLS = 'w-full bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice placeholder-ice/30 focus:outline-none focus:border-steel transition-colors'
+
 export default function FilterDrawer({ filters, onApply, onReset }) {
   const { open, setOpen } = useFilterDrawer()
   const drawerRef = useRef(null)
+
+  const fetchGenres  = useCallback((q) => booksApi.facets('genre', q),  [])
+  const fetchAuthors = useCallback((q) => booksApi.facets('author', q), [])
+  const fetchSeries  = useCallback((q) => booksApi.facets('series', q), [])
 
   // Local draft state — only apply on "Apply"
   const [draft, setDraft] = useState(filters)
@@ -107,12 +116,12 @@ export default function FilterDrawer({ filters, onApply, onReset }) {
           {/* Genre */}
           <section>
             <Label>Genre</Label>
-            <input
-              type="text"
+            <AutocompleteInput
               value={draft.genre ?? ''}
-              onChange={e => set('genre', e.target.value)}
+              onChange={v => set('genre', v)}
               placeholder="e.g. crime"
-              className="mt-2 w-full bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice placeholder-ice/30 focus:outline-none focus:border-steel transition-colors"
+              fetchSuggestions={fetchGenres}
+              className={`mt-2 ${INPUT_CLS}`}
             />
           </section>
 
@@ -131,24 +140,24 @@ export default function FilterDrawer({ filters, onApply, onReset }) {
           {/* Author name */}
           <section>
             <Label>Author</Label>
-            <input
-              type="text"
+            <AutocompleteInput
               value={draft.author ?? ''}
-              onChange={e => set('author', e.target.value)}
+              onChange={v => set('author', v)}
               placeholder="Author name"
-              className="mt-2 w-full bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice placeholder-ice/30 focus:outline-none focus:border-steel transition-colors"
+              fetchSuggestions={fetchAuthors}
+              className={`mt-2 ${INPUT_CLS}`}
             />
           </section>
 
           {/* Series name */}
           <section>
             <Label>Series</Label>
-            <input
-              type="text"
+            <AutocompleteInput
               value={draft.series ?? ''}
-              onChange={e => set('series', e.target.value)}
+              onChange={v => set('series', v)}
               placeholder="Series name"
-              className="mt-2 w-full bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice placeholder-ice/30 focus:outline-none focus:border-steel transition-colors"
+              fetchSuggestions={fetchSeries}
+              className={`mt-2 ${INPUT_CLS}`}
             />
           </section>
         </div>

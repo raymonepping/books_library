@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { ImagePlus } from 'lucide-react'
 import BookDetailPanel from './BookDetailPanel.jsx'
 import { authorNames } from '../../utils/authors.js'
 import { coverPlaceholder } from '../../utils/coverPlaceholder.js'
 import { useUIStore } from '../../store/useUIStore.js'
 
-export default function GridView({ books, selectMode = false, selectedIds, onToggleSelect }) {
+export default function GridView({ books, selectMode = false, selectedIds, onToggleSelect, onFetchCover }) {
   const [panelBook, setPanelBook] = useState(null)
   const density = useUIStore(s => s.booksDensity)
   const minPx = density === 'compact' ? '120px' : '155px'
@@ -29,15 +30,16 @@ export default function GridView({ books, selectMode = false, selectedIds, onTog
             isSelected={selectMode ? selectedIds?.has(book.id) : panelBook?.id === book.id}
             selectMode={selectMode}
             onSelect={() => handleCardClick(book)}
+            onFetchCover={onFetchCover}
           />
         ))}
       </div>
-      {!selectMode && <BookDetailPanel book={panelBook} onClose={() => setPanelBook(null)} />}
+      {!selectMode && <BookDetailPanel book={panelBook} onClose={() => setPanelBook(null)} onBookSelect={setPanelBook} onFetchCover={onFetchCover} />}
     </>
   )
 }
 
-function BookCard({ book, index, compact, isSelected, selectMode, onSelect }) {
+function BookCard({ book, index, compact, isSelected, selectMode, onSelect, onFetchCover }) {
   const { bg, fg, initials } = coverPlaceholder(book)
   const names = authorNames(book.authors)
   const [imgError, setImgError] = useState(false)
@@ -106,6 +108,17 @@ function BookCard({ book, index, compact, isSelected, selectMode, onSelect }) {
             </div>
             {book.genres?.[0] && (
               <div className="shrink-0 h-1.5 opacity-60" style={{ backgroundColor: fg }} />
+            )}
+            {/* Find cover button — appears on hover, only on placeholders */}
+            {onFetchCover && !selectMode && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onFetchCover(book.id) }}
+                title="Find cover image"
+                className="absolute bottom-2 right-2 p-1.5 rounded-full bg-noir/60 text-white/50 hover:text-white hover:bg-noir/80 opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer"
+              >
+                <ImagePlus size={12} />
+              </button>
             )}
           </div>
         )}

@@ -22,5 +22,12 @@ export const booksApi = {
   recommend: (id, limit = 10) =>
     api.get(`/recommend/book/${id}?limit=${limit}`),
 
+  forYou: (seeds = 5, perSeed = 4) =>
+    api.get(`/recommend/for-you?seeds=${seeds}&perSeed=${perSeed}`),
+
   enrich: (isbn) => api.get(`/enrich?isbn=${encodeURIComponent(isbn)}`),
+
+  fetchCover: (id) => api.post(`/books/${id}/fetch-cover`),
+
+  facets: (type, q = '') => api.get(`/books/facets?type=${type}&q=${encodeURIComponent(q)}`),
 }

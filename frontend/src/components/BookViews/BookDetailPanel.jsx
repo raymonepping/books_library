@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Star, BookOpen, BookMarked, BookCheck, BookX, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { X, Star, BookOpen, BookMarked, BookCheck, BookX, Trash2, Pencil, Loader2, Check, ImagePlus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import { booksApi } from '../../api/books.js'
+import { seriesApi } from '../../api/series.js'
 import { useLibraryStore } from '../../store/useLibraryStore.js'
 import { useUIStore } from '../../store/useUIStore.js'
 import { coverPlaceholder } from '../../utils/coverPlaceholder.js'
@@ -17,7 +18,7 @@ const STATUS_ACTIONS = [
   { status: 'did-not-finish', icon: BookX,      label: 'DNF'          },
 ]
 
-export default function BookDetailPanel({ book, onClose }) {
+export default function BookDetailPanel({ book, onClose, onBookSelect, onFetchCover }) {
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving]     = useState(false)
   const panelRef = useRef(null)
@@ -27,11 +28,15 @@ export default function BookDetailPanel({ book, onClose }) {
   const undoDelete    = useLibraryStore(s => s.undoDelete)
   const addToast      = useUIStore(s => s.addToast)
 
+  // Always use the live version from the store so status/rating updates reflect immediately.
+  // Falls back to the prop for similar-book navigation (books not in the current filtered list).
+  const liveBook = useLibraryStore(s => s.books.find(b => b.id === book?.id)) ?? book
+
   useFocusTrap(panelRef, !!book)
   useScrollLock(!!book)
 
   // Reset edit mode when selected book changes
-  useEffect(() => { setEditMode(false) }, [book?.id])
+  useEffect(() => { setEditMode(false) }, [liveBook?.id])
 
   // Escape key closes
   useEffect(() => {
@@ -40,16 +45,16 @@ export default function BookDetailPanel({ book, onClose }) {
     return () => document.removeEventListener('keydown', h)
   }, [onClose])
 
-  if (!book) return null
+  if (!liveBook) return null
 
-  const { bg, fg, initials } = coverPlaceholder(book)
+  const { bg, fg, initials } = coverPlaceholder(liveBook)
 
   async function setStatus(status) {
-    if (saving || book.readStatus === status) return
+    if (saving || liveBook.readStatus === status) return
     setSaving(true)
     try {
-      const updated = await booksApi.updateStatus(book.id, { readStatus: status })
-      upsertBook({ ...book, ...updated })
+      const updated = await booksApi.updateStatus(liveBook.id, { readStatus: status })
+      upsertBook({ ...liveBook, ...updated })
     } catch (err) {
       addToast(err.message, 'error')
     } finally {
@@ -61,8 +66,8 @@ export default function BookDetailPanel({ book, onClose }) {
     if (saving) return
     setSaving(true)
     try {
-      const updated = await booksApi.updateStatus(book.id, { rating })
-      upsertBook({ ...book, ...updated })
+      const updated = await booksApi.updateStatus(liveBook.id, { rating })
+      upsertBook({ ...liveBook, ...updated })
     } catch (err) {
       addToast(err.message, 'error')
     } finally {
@@ -71,8 +76,8 @@ export default function BookDetailPanel({ book, onClose }) {
   }
 
   function handleDelete() {
-    const deletedTitle = book.title
-    scheduleDelete(book)
+    const deletedTitle = liveBook.title
+    scheduleDelete(liveBook)
     onClose()
     addToast(`"${deletedTitle}" removed`, 'info', {
       label: 'Undo',
@@ -137,13 +142,13 @@ export default function BookDetailPanel({ book, onClose }) {
 
         {editMode ? (
           <EditForm
-            book={book}
+            book={liveBook}
             bg={bg} fg={fg} initials={initials}
             onSave={async (data) => {
               setSaving(true)
               try {
-                const updated = await booksApi.update(book.id, data)
-                upsertBook({ ...book, ...updated })
+                const updated = await booksApi.update(liveBook.id, data)
+                upsertBook({ ...liveBook, ...updated })
                 addToast('Book updated', 'success')
                 setEditMode(false)
               } catch (err) {
@@ -157,13 +162,15 @@ export default function BookDetailPanel({ book, onClose }) {
           />
         ) : (
           <ViewPanel
-            book={book}
+            book={liveBook}
             bg={bg} fg={fg} initials={initials}
             saving={saving}
             onStatus={setStatus}
             onRating={setRating}
             onDelete={handleDelete}
             onClose={onClose}
+            onBookSelect={onBookSelect}
+            onFetchCover={onFetchCover}
           />
         )}
       </aside>
@@ -173,10 +180,17 @@ export default function BookDetailPanel({ book, onClose }) {
 
 /* ── View mode ───────────────────────────────────────────────────────────────── */
 
-function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelete, onClose }) {
+function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelete, onClose, onBookSelect, onFetchCover }) {
   const [imgError, setImgError] = useState(false)
+  const [fetchingCover, setFetchingCover] = useState(false)
   const showCover = book.coverUrl && !imgError
   const navigate  = useNavigate()
+
+  async function handleFetchCover() {
+    if (fetchingCover || !onFetchCover) return
+    setFetchingCover(true)
+    try { await onFetchCover(book.id) } finally { setFetchingCover(false) }
+  }
 
   return (
     <>
@@ -185,7 +199,7 @@ function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelet
         <div className="lg:flex lg:gap-5 lg:items-start px-5 py-5">
           {/* Cover */}
           <div
-            className="w-24 rounded-lg overflow-hidden shadow-xl shrink-0 flex items-center justify-center mx-auto lg:mx-0 mb-4 lg:mb-0"
+            className="w-24 rounded-lg overflow-hidden shadow-xl shrink-0 flex items-center justify-center mx-auto lg:mx-0 mb-4 lg:mb-0 relative group/cover"
             style={{ aspectRatio: '2/3', backgroundColor: bg }}
           >
             {showCover ? (
@@ -197,9 +211,23 @@ function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelet
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="font-serif font-bold text-xl select-none" style={{ color: fg }}>
-                {initials}
-              </span>
+              <>
+                <span className="font-serif font-bold text-xl select-none" style={{ color: fg }}>
+                  {initials}
+                </span>
+                {onFetchCover && (
+                  <button
+                    onClick={handleFetchCover}
+                    disabled={fetchingCover}
+                    title="Find cover image"
+                    className="absolute inset-0 flex items-end justify-center pb-2 bg-noir/0 hover:bg-noir/40 transition-colors cursor-pointer opacity-0 group-hover/cover:opacity-100 disabled:opacity-50"
+                  >
+                    {fetchingCover
+                      ? <Loader2 size={14} className="text-white animate-spin" />
+                      : <ImagePlus size={14} className="text-white/80" />}
+                  </button>
+                )}
+              </>
             )}
           </div>
 
@@ -290,16 +318,8 @@ function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelet
         </div>
       )}
 
-      {/* Find Similar */}
-      <div className="px-5 pt-4">
-        <button
-          onClick={() => { onClose(); navigate('/discover', { state: { seedBook: book } }) }}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded text-sm transition-colors cursor-pointer text-ice/50 hover:text-amber hover:bg-amber/5 border border-smoke-light hover:border-amber/30"
-        >
-          <Sparkles size={14} className="shrink-0" />
-          Find similar books
-        </button>
-      </div>
+      {/* Similar books */}
+      <SimilarBooks book={book} onBookSelect={onBookSelect} />
 
       {/* Delete — no confirm, just instant with undo toast */}
       <div className="px-5 pb-6 pt-2">
@@ -314,6 +334,119 @@ function ViewPanel({ book, bg, fg, initials, saving, onStatus, onRating, onDelet
         <p className="text-ice/20 text-[11px] mt-1 text-center">You can undo this for 5 seconds</p>
       </div>
     </>
+  )
+}
+
+/* ── Similar books ───────────────────────────────────────────────────────────── */
+
+function MiniCover({ book }) {
+  const { bg, fg, initials } = coverPlaceholder(book)
+  const [imgError, setImgError] = useState(false)
+  const showCover = book.coverUrl && !imgError
+  return (
+    <div
+      className="w-7 shrink-0 rounded overflow-hidden shadow flex items-center justify-center"
+      style={{ height: 42, backgroundColor: bg }}
+    >
+      {showCover ? (
+        <img src={book.coverUrl} alt="" className="w-full h-full object-cover" onError={() => setImgError(true)} />
+      ) : (
+        <span className="font-serif font-bold text-[9px] select-none" style={{ color: fg }}>{initials}</span>
+      )}
+    </div>
+  )
+}
+
+function SimilarBooks({ book, onBookSelect }) {
+  const [recs, setRecs]     = useState(null)
+  const [failed, setFailed] = useState(false)
+  const prevIdRef = useRef(null)
+  const navigate  = useNavigate()
+
+  useEffect(() => {
+    let cancelled = false
+    const isNewBook = prevIdRef.current !== book.id
+    prevIdRef.current = book.id
+
+    if (isNewBook) {
+      // Switching to a different book — show spinner immediately
+      setRecs(null)
+      setFailed(false)
+    }
+    // For same-book updates (edit saved): keep current recs visible while waiting
+
+    // Delay: quick for new book, longer for same-book edit so background
+    // re-enrichment and FTS index update have time to settle (~10 s).
+    const delay = isNewBook ? 300 : 10_000
+
+    const t = setTimeout(async () => {
+      try {
+        const data = await booksApi.recommend(book.id, 5)
+        if (!cancelled) {
+          setRecs(data.recommendations ?? [])
+          setFailed(false)
+        }
+      } catch {
+        if (!cancelled) setFailed(true)
+      }
+    }, delay)
+
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [book.id, book.updatedAt])
+
+  async function handleSelect(rec) {
+    if (onBookSelect) {
+      try {
+        const full = await booksApi.get(rec.id)
+        onBookSelect(full)
+      } catch {
+        onBookSelect(rec)
+      }
+    }
+  }
+
+  if (failed) return null
+
+  return (
+    <div className="px-5 py-3 border-b border-smoke-light">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-ice/40 text-xs uppercase tracking-widest">Similar books</p>
+        <button
+          onClick={() => navigate('/discover', { state: { seedBook: book } })}
+          className="text-ice/30 hover:text-steel text-[11px] transition-colors cursor-pointer"
+        >
+          Open in Discover →
+        </button>
+      </div>
+
+      {recs === null ? (
+        <div className="flex items-center gap-2 text-ice/30 text-xs py-1">
+          <Loader2 size={12} className="animate-spin" />
+          Finding similar…
+        </div>
+      ) : recs.length === 0 ? (
+        <p className="text-ice/30 text-xs py-1">No similar books found</p>
+      ) : (
+        <div className="space-y-0.5">
+          {recs.map(r => (
+            <button
+              key={r.id}
+              onClick={() => handleSelect(r)}
+              className="flex items-center gap-2.5 w-full text-left rounded px-2 py-1.5 hover:bg-smoke-light transition-colors group cursor-pointer"
+            >
+              <MiniCover book={r} />
+              <div className="flex-1 min-w-0">
+                <p className="text-ice/85 text-xs font-medium truncate group-hover:text-amber transition-colors">{r.title}</p>
+                <p className="text-ice/40 text-[11px] truncate">{authorNames(r.authors)?.join(', ')}</p>
+              </div>
+              {r.matchedGenres?.length > 0 && (
+                <span className="text-[10px] text-steel/60 shrink-0">{r.matchedGenres[0]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -333,9 +466,16 @@ function EditForm({ book, bg, fg, initials, onSave, onCancel, saving }) {
     notes:         book.notes ?? '',
     owned:         book.owned ?? false,
     coverUrl:      book.coverUrl ?? '',
+    seriesId:      book.seriesId ?? '',
+    seriesOrder:   book.seriesOrder ?? '',
   })
   const [coverPreview, setCoverPreview] = useState(book.coverUrl ?? '')
   const [imgError, setImgError] = useState(false)
+  const [seriesList, setSeriesList] = useState([])
+
+  useEffect(() => {
+    seriesApi.list({ limit: 100 }).then(d => setSeriesList(d.series ?? [])).catch(() => {})
+  }, [])
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })) }
 
@@ -353,6 +493,8 @@ function EditForm({ book, bg, fg, initials, onSave, onCancel, saving }) {
       genres:        splitList(form.genres),
       publishedYear: form.publishedYear ? parseInt(form.publishedYear) : null,
       pageCount:     form.pageCount     ? parseInt(form.pageCount)     : null,
+      seriesId:      form.seriesId || null,
+      seriesOrder:   form.seriesOrder   ? parseInt(form.seriesOrder)   : null,
     })
   }
 
@@ -442,11 +584,39 @@ function EditForm({ book, bg, fg, initials, onSave, onCancel, saving }) {
           </Field>
         </div>
 
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 border-b border-smoke-light">
           <label className="flex items-center gap-2.5 cursor-pointer select-none">
             <input type="checkbox" checked={form.owned} onChange={e => set('owned', e.target.checked)} className="accent-amber w-4 h-4" />
             <span className="text-ice/70 text-sm">I own this book</span>
           </label>
+        </div>
+
+        {/* Series */}
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid grid-cols-[1fr_5rem] gap-3">
+            <Field label="Series">
+              <select
+                value={form.seriesId}
+                onChange={e => set('seriesId', e.target.value)}
+                className="w-full bg-smoke-dark border border-smoke-light rounded px-3 py-2 text-sm text-ice focus:outline-none focus:border-steel transition-colors cursor-pointer"
+              >
+                <option value="">— none —</option>
+                {seriesList.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Order #">
+              <TextInput
+                type="number"
+                value={form.seriesOrder}
+                onChange={e => set('seriesOrder', e.target.value)}
+                placeholder="1"
+                min="1"
+                disabled={!form.seriesId}
+              />
+            </Field>
+          </div>
         </div>
       </div>
 

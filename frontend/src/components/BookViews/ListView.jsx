@@ -29,7 +29,7 @@ export default function ListView({ books, selectMode = false, selectedIds, onTog
           />
         ))}
       </div>
-      {!selectMode && <BookDetailPanel book={panelBook} onClose={() => setPanelBook(null)} />}
+      {!selectMode && <BookDetailPanel book={panelBook} onClose={() => setPanelBook(null)} onBookSelect={setPanelBook} />}
     </>
   )
 }

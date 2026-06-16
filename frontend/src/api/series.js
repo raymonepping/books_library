@@ -18,4 +18,6 @@ export const seriesApi = {
 
   markOwned: (id, order, owned) =>
     api.put(`/series/${id}/books/${order}`, { owned }),
+
+  delete: (id) => api.delete(`/series/${id}`),
 }

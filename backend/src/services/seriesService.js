@@ -6,7 +6,9 @@ import { logger } from '../config/logger.js'
 
 const BUCKET = process.env.COUCHBASE_BUCKET || 'library'
 const SCOPE_NAME = process.env.COUCHBASE_SCOPE || 'library_scope'
-const KS = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`series\``
+const KS       = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`series\``
+const KS_AUTHORS = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`authors\``
+const KS_BOOKS   = `\`${BUCKET}\`.\`${SCOPE_NAME}\`.\`books\``
 
 function col(name = 'series') {
   return getScope().collection(name)
@@ -19,6 +21,35 @@ async function kvGet(id) {
     if (err instanceof couchbase.DocumentNotFoundError) throw new NotFoundError('Series', id)
     throw err
   }
+}
+
+// Annotate each series with the highest-priority readStatus across its linked books.
+// Priority: reading > want-to-read > read > did-not-finish
+const STATUS_PRIORITY = { reading: 0, 'want-to-read': 1, read: 2, 'did-not-finish': 3 }
+
+async function annotateStatuses(seriesList) {
+  const allBookIds = [...new Set(
+    seriesList.flatMap(s => (s.books ?? []).map(b => b.bookId).filter(Boolean))
+  )]
+  if (!allBookIds.length) return seriesList
+
+  const result = await getCluster().query(
+    `SELECT META(b).id AS bookId, b.readStatus
+     FROM ${KS_BOOKS} b
+     WHERE META(b).id IN $bookIds AND b.readStatus IS NOT MISSING`,
+    { parameters: { bookIds: allBookIds } }
+  )
+  const statusMap = Object.fromEntries(result.rows.map(r => [r.bookId, r.readStatus]))
+
+  return seriesList.map(s => {
+    const statuses = (s.books ?? [])
+      .filter(b => b.bookId && statusMap[b.bookId])
+      .map(b => statusMap[b.bookId])
+    const currentReadStatus = statuses.length
+      ? statuses.sort((a, b) => (STATUS_PRIORITY[a] ?? 99) - (STATUS_PRIORITY[b] ?? 99))[0]
+      : null
+    return { ...s, currentReadStatus }
+  })
 }
 
 function withCompletion(s) {
@@ -39,19 +70,24 @@ function bolUrl(book) {
 // List
 // ------------------------------------------------------------------------------
 export async function listSeries({ page = 1, limit = 20 } = {}) {
-  const limitN = Math.min(parseInt(limit) || 20, 100)
+  const limitN  = Math.min(parseInt(limit) || 20, 100)
   const offsetN = (Math.max(parseInt(page) || 1, 1) - 1) * limitN
 
   const [dataRes, countRes] = await Promise.all([
     getCluster().query(
-      `SELECT s.* FROM ${KS} s ORDER BY s.name ASC LIMIT ${limitN} OFFSET ${offsetN}`
+      `SELECT s.*,
+         IFNULL((SELECT RAW a.name FROM ${KS_AUTHORS} a USE KEYS [s.authorId] LIMIT 1)[0], null) AS authorName
+       FROM ${KS} s
+       ORDER BY s.name ASC
+       LIMIT ${limitN} OFFSET ${offsetN}`
     ),
     getCluster().query(`SELECT COUNT(*) AS total FROM ${KS} s`),
   ])
 
   const total = countRes.rows[0]?.total ?? 0
+  const seriesList = await annotateStatuses(dataRes.rows.map(withCompletion))
   return {
-    series: dataRes.rows.map(withCompletion),
+    series: seriesList,
     total,
     page: Math.max(parseInt(page) || 1, 1),
     limit: limitN,
@@ -81,6 +117,7 @@ export async function createSeries(data) {
     authorId: data.authorId ?? null,
     totalBooks: parseInt(data.totalBooks) || 0,
     completedAt: null,
+    addedAt: new Date().toISOString(),
     books: (data.books ?? []).map((b) => ({
       seriesOrder: b.seriesOrder,
       bookId: b.bookId ?? null,
@@ -150,6 +187,19 @@ export async function updateSeries(id, data) {
   await col().replace(id, updated)
   logger.info('[series] updated', { id })
   return withCompletion(updated)
+}
+
+// ------------------------------------------------------------------------------
+// Delete
+// ------------------------------------------------------------------------------
+export async function deleteSeries(id) {
+  try {
+    await col().remove(id)
+  } catch (err) {
+    if (err instanceof couchbase.DocumentNotFoundError) throw new NotFoundError('Series', id)
+    throw err
+  }
+  logger.info('[series] deleted', { id })
 }
 
 // ------------------------------------------------------------------------------

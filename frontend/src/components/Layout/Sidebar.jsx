@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  BookOpen, Users, Layers, Compass, LayoutDashboard,
+  BookOpen, Users, Layers, Compass, LayoutDashboard, MessageSquare,
   PanelLeftClose, PanelLeftOpen, Plus,
 } from 'lucide-react'
 import { useUIStore } from '../../store/useUIStore.js'
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/series',    icon: Layers,          label: 'Series'    },
   { to: '/discover',  icon: Compass,         label: 'Discover'  },
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/librarian', icon: MessageSquare,   label: 'Librarian' },
 ]
 
 export default function Sidebar() {

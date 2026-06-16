@@ -42,7 +42,7 @@ export default function SpineView({ books }) {
         />
       ))}
 
-      <BookDetailPanel book={selected} onClose={() => setSelected(null)} />
+      <BookDetailPanel book={selected} onClose={() => setSelected(null)} onBookSelect={setSelected} />
     </div>
   )
 }

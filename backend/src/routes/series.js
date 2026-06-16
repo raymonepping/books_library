@@ -41,6 +41,12 @@ router.get('/:id/missing', async (req, res) => {
   res.json({ success: true, data })
 })
 
+// DELETE /api/series/:id
+router.delete('/:id', async (req, res) => {
+  await seriesService.deleteSeries(req.params.id)
+  res.json({ success: true })
+})
+
 // PUT /api/series/:id/books/:order  — body: { owned: bool }
 router.put('/:id/books/:order', async (req, res) => {
   if (req.body.owned === undefined) throw new ValidationError('owned is required')

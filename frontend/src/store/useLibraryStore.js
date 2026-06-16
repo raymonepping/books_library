@@ -9,7 +9,7 @@ export const useLibraryStore = create((set, get) => ({
   books: [],
   totalBooks: 0,
   booksPage: 1,
-  booksLimit: 40,
+  booksLimit: 30,
   booksFilters: { status: '', genre: '', sort: 'addedAt', order: 'desc', owned: '', author: '', series: '' },
   booksLoading: false,
   booksError: null,

@@ -9,6 +9,7 @@ const AuthorProfilePage = lazy(() => import('./pages/AuthorProfilePage.jsx'))
 const SeriesPage        = lazy(() => import('./pages/SeriesPage.jsx'))
 const DiscoverPage      = lazy(() => import('./pages/DiscoverPage.jsx'))
 const DashboardPage     = lazy(() => import('./pages/DashboardPage.jsx'))
+const LibrarianPage     = lazy(() => import('./pages/LibrarianPage.jsx'))
 const NotFoundPage      = lazy(() => import('./pages/NotFoundPage.jsx'))
 
 function PageFallback() {
@@ -32,6 +33,7 @@ function AnimatedRoutes() {
           <Route path="series"      element={<Suspense fallback={<PageFallback />}><SeriesPage /></Suspense>} />
           <Route path="discover"    element={<Suspense fallback={<PageFallback />}><DiscoverPage /></Suspense>} />
           <Route path="dashboard"   element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+          <Route path="librarian"  element={<Suspense fallback={<PageFallback />}><LibrarianPage /></Suspense>} />
           <Route path="*"           element={<Suspense fallback={<PageFallback />}><NotFoundPage /></Suspense>} />
         </Route>
       </Routes>

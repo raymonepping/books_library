@@ -22,6 +22,9 @@ import searchRouter from './routes/search.js'
 import enrichRouter from './routes/enrich.js'
 import recommendRouter from './routes/recommend.js'
 import dashboardRouter from './routes/dashboard.js'
+import adminRouter from './routes/admin.js'
+import similarityRouter  from './routes/similarity.js'
+import librarianRouter  from './routes/librarian.js'
 
 const app = express()
 const PORT = config.PORT
@@ -56,6 +59,9 @@ app.use('/api/search', searchRouter)
 app.use('/api/enrich', enrichRouter)
 app.use('/api/recommend', recommendRouter)
 app.use('/api/dashboard', dashboardRouter)
+app.use('/api/admin', adminRouter)
+app.use('/api/similarity', similarityRouter)
+app.use('/api/librarian', librarianRouter)
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: `Cannot ${req.method} ${req.path}` })

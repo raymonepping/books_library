@@ -18,6 +18,12 @@ const schema = z.object({
   // Ollama
   OLLAMA_BASE_URL:      z.string().url().default('http://ollama:11434'),
   OLLAMA_EMBED_MODEL:   z.string().default('nomic-embed-text'),
+  OLLAMA_EMBED_DIMS:    z.coerce.number().default(768),
+  OLLAMA_PROFILE_MODEL: z.string().default('llama3.2'),
+
+  // Embedding pipeline
+  EMBED_BATCH_SIZE:     z.coerce.number().default(10),
+  EMBED_CONCURRENCY:    z.coerce.number().default(2),
 
   // Public URLs
   BACKEND_PUBLIC_URL:   z.string().default('http://localhost:3002'),

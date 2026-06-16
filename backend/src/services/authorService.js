@@ -3,6 +3,15 @@ import { getCluster, getScope } from '../config/couchbase.js'
 import { authorId, slugify } from '../utils/idGenerator.js'
 import { NotFoundError, ValidationError } from '../utils/errors.js'
 import { logger } from '../config/logger.js'
+import { buildAuthorText, getEmbedding, persistEmbedding } from './embeddingService.js'
+
+function scheduleAuthorEmbedding(id, doc) {
+  const text = buildAuthorText(doc)
+  if (!text) return
+  getEmbedding(text)
+    .then(vec => vec ? persistEmbedding('authors', id, vec) : null)
+    .catch(() => {})
+}
 
 const BUCKET = process.env.COUCHBASE_BUCKET || 'library'
 const SCOPE_NAME = process.env.COUCHBASE_SCOPE || 'library_scope'
@@ -25,13 +34,17 @@ async function kvGet(id) {
 // ------------------------------------------------------------------------------
 // List
 // ------------------------------------------------------------------------------
-export async function listAuthors({ page = 1, limit = 20, genre, nationality } = {}) {
+export async function listAuthors({ page = 1, limit = 20, genre, nationality, q } = {}) {
   const limitN = Math.min(parseInt(limit) || 20, 100)
   const offsetN = (Math.max(parseInt(page) || 1, 1) - 1) * limitN
 
   const conditions = []
   const params = {}
 
+  if (q) {
+    conditions.push('LOWER(a.name) LIKE $namePattern')
+    params.namePattern = `%${q.toLowerCase()}%`
+  }
   if (genre) {
     conditions.push('ANY g IN a.genres SATISFIES g = $genre END')
     params.genre = genre
@@ -108,6 +121,7 @@ export async function createAuthor(data) {
     website: data.website ?? '',
     genres: data.genres ?? [],
     seriesIds: data.seriesIds ?? [],
+    embedding: null,
   }
   try {
     await col().insert(id, doc)
@@ -118,6 +132,9 @@ export async function createAuthor(data) {
     throw err
   }
   logger.info('[authors] created', { id })
+
+  scheduleAuthorEmbedding(id, doc)
+
   return doc
 }
 
@@ -137,10 +154,12 @@ export async function ensureAuthors(input = []) {
       id, type: 'author', name, slug,
       bio: '', birthYear: null, nationality: '',
       photoUrl: '', website: '', genres: [], seriesIds: [],
+      embedding: null,
     }
     try {
       await col().insert(id, doc)
       logger.info('[authors] auto-created stub', { id, name })
+      scheduleAuthorEmbedding(id, doc)
     } catch (err) {
       if (!(err instanceof couchbase.DocumentExistsError)) throw err
     }

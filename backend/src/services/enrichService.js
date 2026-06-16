@@ -100,6 +100,27 @@ function mergeBook(isbn, ol, gbItem) {
 }
 
 // ------------------------------------------------------------------------------
+// Open Library — cover search by title + optional author
+// ------------------------------------------------------------------------------
+export async function fetchCoverByTitleAuthor(title, authors = []) {
+  try {
+    const authorName = Array.isArray(authors)
+      ? (typeof authors[0] === 'string' ? authors[0] : authors[0]?.name ?? '')
+      : ''
+    const params = { title, limit: 3, fields: 'cover_i,title,author_name' }
+    if (authorName) params.author = authorName
+
+    const res = await axios.get(`${OL_BASE}/search.json`, { params, timeout: TIMEOUT })
+    const coverId = res.data.docs?.find(d => d.cover_i)?.cover_i
+    if (!coverId) return null
+    return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
+  } catch (err) {
+    logger.warn('[enrich] OL title/author cover search failed', { title, err: err.message })
+    return null
+  }
+}
+
+// ------------------------------------------------------------------------------
 // Public: enrich by ISBN
 // ------------------------------------------------------------------------------
 export async function enrichByIsbn(rawIsbn) {
@@ -126,13 +147,62 @@ async function fetchOLAuthor(name) {
 }
 
 // ------------------------------------------------------------------------------
-// Public: enrich author by name
+// Open Library — full author document (bio, photos, birth_date, …)
+// ------------------------------------------------------------------------------
+async function fetchOLAuthorDetails(olKey) {
+  try {
+    const key = olKey.startsWith('/authors/') ? olKey.slice('/authors/'.length) : olKey
+    const res = await axios.get(`${OL_BASE}/authors/${key}.json`, { timeout: TIMEOUT })
+    return res.data ?? null
+  } catch (err) {
+    logger.warn('[enrich] OL author details fetch failed', { olKey, err: err.message })
+    return null
+  }
+}
+
+// ------------------------------------------------------------------------------
+// Public: pick best OL match, fetch full details, return normalised author data.
+// Used by both the per-author route and the batch admin endpoint.
+// ------------------------------------------------------------------------------
+export async function enrichAuthorByName(name) {
+  const candidates = await fetchOLAuthor(name)
+  if (!candidates.length) return null
+
+  // Prefer exact name match, then highest work_count
+  const lower = name.toLowerCase()
+  const best  = candidates.find(c => c.name?.toLowerCase() === lower)
+    ?? [...candidates].sort((a, b) => (b.work_count ?? 0) - (a.work_count ?? 0))[0]
+
+  if (!best?.key) return null
+
+  const details = await fetchOLAuthorDetails(best.key)
+
+  const bio = typeof details?.bio === 'string'
+    ? details.bio
+    : (details?.bio?.value ?? '')
+
+  // Photo: prefer a known photo ID (more reliable than OLID cover lookup)
+  const photoId  = details?.photos?.find?.(p => p > 0) ?? null
+  const photoUrl = photoId
+    ? `https://covers.openlibrary.org/a/id/${photoId}-L.jpg`
+    : `https://covers.openlibrary.org/a/olid/${best.key}-L.jpg`
+
+  return {
+    name:      details?.personal_name ?? details?.name ?? best.name ?? name,
+    bio:       bio.slice(0, 2000),
+    birthYear: parseYear(best.birth_date ?? details?.birth_date),
+    photoUrl,
+    olKey:     best.key,
+  }
+}
+
+// ------------------------------------------------------------------------------
+// Legacy: return top candidates for manual disambiguation (used by /enrich/author)
 // ------------------------------------------------------------------------------
 export async function enrichAuthor(name) {
   const docs = await fetchOLAuthor(name)
   if (!docs.length) return null
 
-  // Return top 3 candidates so the client can pick the right one
   return docs.slice(0, 3).map((doc) => ({
     name: doc.name ?? name,
     olKey: doc.key ?? null,

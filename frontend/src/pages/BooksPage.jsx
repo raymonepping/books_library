@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   BookOpen, Grid3X3, AlignJustify, BookMarked, LayoutGrid,
   SlidersHorizontal, ChevronLeft, ChevronRight, X,
-  CheckSquare, Square, Trash2, BookCheck,
+  CheckSquare, Square, Trash2, BookCheck, ArrowUpDown,
 } from 'lucide-react'
 import { useLibraryStore } from '../store/useLibraryStore.js'
 import { useUIStore } from '../store/useUIStore.js'
@@ -28,6 +28,14 @@ const STATUS_OPTIONS = [
   { value: 'reading',       label: 'Reading'       },
   { value: 'want-to-read',  label: 'Want to read'  },
   { value: 'did-not-finish',label: 'Did not finish' },
+]
+
+const SORT_OPTIONS = [
+  { value: 'addedAt',      label: 'Date added' },
+  { value: 'title',        label: 'Title'      },
+  { value: 'author',       label: 'Author'     },
+  { value: 'rating',       label: 'Rating'     },
+  { value: 'publishedYear',label: 'Year'       },
 ]
 
 export default function BooksPage() {
@@ -107,6 +115,21 @@ export default function BooksPage() {
       addToast(err.message, 'error')
     } finally {
       setBulkBusy(false)
+    }
+  }
+
+  async function handleFetchCover(bookId) {
+    try {
+      const data = await booksApi.fetchCover(bookId)
+      if (data?.coverUrl) {
+        const book = books.find(b => b.id === bookId)
+        if (book) upsertBook({ ...book, coverUrl: data.coverUrl })
+        addToast('Cover found', 'success')
+      } else {
+        addToast('No cover found for this book', 'info')
+      }
+    } catch {
+      addToast('Could not fetch cover', 'error')
     }
   }
 
@@ -245,6 +268,27 @@ export default function BooksPage() {
         </div>
       )}
 
+      {/* ── Sort strip ── */}
+      {!selectMode && (
+        <div className="flex items-center gap-1 px-4 md:px-6 py-1.5 border-b border-smoke-light shrink-0">
+          <ArrowUpDown size={12} className="text-ice/25 mr-1" />
+          {SORT_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              onClick={() => setBooksFilters({ sort: o.value })}
+              className={[
+                'px-2.5 py-1 rounded text-xs transition-colors cursor-pointer',
+                (booksFilters.sort ?? 'addedAt') === o.value
+                  ? 'text-amber bg-amber/10'
+                  : 'text-ice/35 hover:text-ice',
+              ].join(' ')}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6">
         {/* Active filter chips */}
@@ -293,10 +337,10 @@ export default function BooksPage() {
 
         {!booksLoading && books.length > 0 && booksView === 'spine' && <SpineView books={books} />}
         {!booksLoading && books.length > 0 && booksView === 'grid' && (
-          <GridView books={books} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+          <GridView books={books} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} onFetchCover={handleFetchCover} />
         )}
         {!booksLoading && books.length > 0 && booksView === 'list' && (
-          <ListView books={books} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+          <ListView books={books} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} onFetchCover={handleFetchCover} />
         )}
 
         {/* Pagination */}

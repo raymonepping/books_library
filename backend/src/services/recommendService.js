@@ -1,7 +1,7 @@
 import { getCluster, getScope } from '../config/couchbase.js'
 import { logger } from '../config/logger.js'
 import { NotFoundError } from '../utils/errors.js'
-import { getEmbedding, cosineSim } from './embeddingService.js'
+import { getEmbedding, cosineSim, buildBookText, buildAuthorText, warmCache, persistEmbedding } from './embeddingService.js'
 
 const KV_BOOKS = 'books'
 const KV_AUTHORS = 'authors'
@@ -41,10 +41,11 @@ export async function recommendBooks(bookId, { limit = 10 } = {}) {
     return { seedId: bookId, tier: 'none', recommendations: [] }
   }
 
-  // 2. Tier-1 — genre overlap via N1QL
+  // 2. Tier-1 — genre overlap via N1QL (embedding included to avoid extra KV lookups)
   const n1qlResult = await cluster.query(
     `SELECT META(b).id AS id, b.title, b.description, b.genres, b.isbn,
             b.authors, b.coverUrl, b.readStatus, b.rating, b.publishedYear,
+            b.subtitle, b.embedding,
             ARRAY_COUNT(ARRAY g FOR g IN b.genres WHEN g IN $seedGenres END) AS genreMatches
      FROM \`library\`.\`library_scope\`.\`books\` b
      WHERE META(b).id != $seedId
@@ -65,16 +66,24 @@ export async function recommendBooks(bookId, { limit = 10 } = {}) {
     return { seedId: bookId, tier: 'genre', recommendations: [] }
   }
 
-  // 3. Tier-3 — Ollama embeddings (optional, fails gracefully)
+  // 3. Tier-3 — embeddings (use stored vector when available, otherwise call Ollama)
   let tier = 'genre'
-  const seedText = [seed.title, seed.description].filter(Boolean).join('. ')
-  const seedVec = await getEmbedding(seedText)
+
+  // Use stored vector directly — no cache warming (stored vector may be System B, text is System A)
+  let seedVec = seed.embedding?.length ? seed.embedding : null
+  if (!seedVec) {
+    seedVec = await getEmbedding(buildBookText(seed))
+    if (seedVec) persistEmbedding('books', bookId, seedVec).catch(() => {})
+  }
 
   if (seedVec) {
     const embeddings = await Promise.all(
-      candidates.map(c =>
-        getEmbedding([c.title, c.description].filter(Boolean).join('. '))
-      )
+      candidates.map(async c => {
+        if (c.embedding?.length) return c.embedding  // use stored vector directly
+        const vec = await getEmbedding(buildBookText(c))
+        if (vec) persistEmbedding('books', c.id, vec).catch(() => {})
+        return vec
+      })
     )
     const someEmbedded = embeddings.some(Boolean)
     if (someEmbedded) {
@@ -117,6 +126,83 @@ export async function recommendBooks(bookId, { limit = 10 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// For You — personalized feed built from the user's top-rated read books
+// ---------------------------------------------------------------------------
+export async function forYouRecommendations({ maxSeeds = 5, perSeed = 4 } = {}) {
+  const cluster = getCluster()
+
+  // 1. Seeds: fetch a pool of top-rated read books, then shuffle so each visit
+  //    surfaces a different combination rather than always the same top-5.
+  const poolSize = Math.max(maxSeeds * 3, 15)
+  const seedResult = await cluster.query(
+    `SELECT META(b).id AS id, b.title, b.authors, b.genres, b.coverUrl,
+            b.rating, b.embedding, b.subtitle
+     FROM \`library\`.\`library_scope\`.\`books\` b
+     WHERE b.readStatus IN ['read', 'finished']
+       AND b.genres IS NOT MISSING
+       AND ARRAY_LENGTH(b.genres) > 0
+     ORDER BY b.rating DESC NULLS LAST, b.addedAt DESC
+     LIMIT $poolSize`,
+    { parameters: { poolSize } }
+  )
+  const pool = seedResult.rows ?? []
+  if (!pool.length) return { sections: [], reason: 'no-read-books' }
+
+  // Shuffle the pool (Fisher-Yates) and take maxSeeds
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]]
+  }
+  const seeds = pool.slice(0, maxSeeds)
+
+  // 2. Run recommendations for all seeds in parallel
+  const seedResults = await Promise.all(
+    seeds.map(async seed => {
+      try {
+        const recs = await recommendBooks(seed.id, { limit: perSeed * 3 })
+        return { seed, recs }
+      } catch {
+        return null
+      }
+    })
+  )
+
+  // 3. Deduplicate: each book shows in at most one section;
+  //    only surface unread / want-to-read books (not already-read or currently-reading)
+  const SKIP_STATUSES = new Set(['read', 'finished', 'reading'])
+  const seen = new Set(seeds.map(s => s.id))
+  const sections = []
+
+  for (const entry of seedResults) {
+    if (!entry) continue
+    const { seed, recs } = entry
+
+    const filtered = (recs.recommendations ?? [])
+      .filter(r => !SKIP_STATUSES.has(r.readStatus ?? ''))
+      .filter(r => !seen.has(r.id))
+      .slice(0, perSeed)
+
+    filtered.forEach(r => seen.add(r.id))
+
+    if (filtered.length > 0) {
+      sections.push({
+        seed: {
+          id: seed.id,
+          title: seed.title,
+          authors: seed.authors ?? [],
+          coverUrl: seed.coverUrl ?? '',
+          rating: seed.rating ?? null,
+        },
+        recommendations: filtered,
+        tier: recs.tier,
+      })
+    }
+  }
+
+  return { sections }
+}
+
+// ---------------------------------------------------------------------------
 // Authors
 // ---------------------------------------------------------------------------
 export async function recommendAuthors(authorId, { limit = 5 } = {}) {
@@ -145,8 +231,8 @@ export async function recommendAuthors(authorId, { limit = 5 } = {}) {
   // 3. Score other authors: 2pts nationality match + genre-book overlap count
   // SELECT RAW COUNT(1)...[0] extracts the scalar from the subquery array
   const recResult = await cluster.query(
-    `SELECT META(a).id AS id, a.name, a.nationality, a.photoUrl, a.bio,
-            (CASE WHEN a.nationality = $nationality AND a.nationality IS NOT MISSING THEN 2 ELSE 0 END) AS natScore,
+    `SELECT META(a).id AS id, a.name, a.nationality, a.photoUrl, a.bio, a.embedding,
+            (CASE WHEN a.nationality = $nationality AND a.nationality != '' AND $nationality != '' THEN 2 ELSE 0 END) AS natScore,
             (SELECT RAW COUNT(1) FROM \`library\`.\`library_scope\`.\`books\` b2
              WHERE ANY auth IN b2.authors SATISFIES auth.id = META(a).id END
                AND ANY g IN b2.genres SATISFIES g IN $seedGenres END)[0] AS bookOverlap
@@ -169,16 +255,23 @@ export async function recommendAuthors(authorId, { limit = 5 } = {}) {
     return { seedId: authorId, tier: 'genre', recommendations: [] }
   }
 
-  // 4. Tier-3 — Ollama embeddings for authors (bio-based)
+  // 4. Tier-3 — embeddings for authors (use stored vector when available)
   let tier = 'genre'
-  const seedText = [seed.name, seed.bio].filter(Boolean).join('. ')
-  const seedVec = await getEmbedding(seedText)
+
+  let seedVec = seed.embedding?.length ? seed.embedding : null
+  if (!seedVec) {
+    seedVec = await getEmbedding(buildAuthorText(seed))
+    if (seedVec) persistEmbedding('authors', authorId, seedVec).catch(() => {})
+  }
 
   if (seedVec) {
     const embeddings = await Promise.all(
-      candidates.map(c =>
-        getEmbedding([c.name, c.bio].filter(Boolean).join('. '))
-      )
+      candidates.map(async c => {
+        if (c.embedding?.length) return c.embedding  // use stored vector directly
+        const vec = await getEmbedding(buildAuthorText(c))
+        if (vec) persistEmbedding('authors', c.id, vec).catch(() => {})
+        return vec
+      })
     )
     const someEmbedded = embeddings.some(Boolean)
     if (someEmbedded) {

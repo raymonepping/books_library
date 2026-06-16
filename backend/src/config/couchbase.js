@@ -12,6 +12,11 @@ let scope   = null
 let reconnecting = false
 
 function loadCredentials() {
+  // Env vars take priority (local dev / CI)
+  if (process.env.COUCHBASE_USERNAME && process.env.COUCHBASE_PASSWORD) {
+    return { username: process.env.COUCHBASE_USERNAME, password: process.env.COUCHBASE_PASSWORD }
+  }
+  // Vault Agent secrets file (Docker / production)
   const parsed = parse(fs.readFileSync(DB_SECRETS))
   return { username: parsed.CB_USERNAME, password: parsed.CB_PASSWORD }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ExternalLink } from 'lucide-react'
 import { authorsApi } from '../api/authors.js'
 import { booksApi } from '../api/books.js'
@@ -24,7 +24,7 @@ export default function AuthorProfilePage() {
         setAuthor(a)
         // Parallel: books by this author + similar author recommendations
         return Promise.all([
-          booksApi.list({ author: id, limit: 50 }),
+          booksApi.list({ author: a.name, limit: 50 }),
           authorsApi.recommend(id, 4).catch(() => ({ recommendations: [] })),
         ])
       })
@@ -193,9 +193,25 @@ function SectionTitle({ children }) {
 
 function BookRow({ book }) {
   const { bg } = spineColor(book)
+  const [imgError, setImgError] = useState(false)
+  const navigate  = useNavigate()
+  const showCover = book.coverUrl && !imgError
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-smoke transition-colors">
-      <div className="w-6 h-9 rounded shrink-0" style={{ backgroundColor: bg }} />
+    <button
+      onClick={() => navigate('/discover', { state: { seedBook: book } })}
+      className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-smoke-light transition-colors w-full text-left cursor-pointer"
+    >
+      <div className="w-7 h-10 rounded shrink-0 overflow-hidden" style={{ backgroundColor: bg }}>
+        {showCover && (
+          <img
+            src={book.coverUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        )}
+      </div>
       <div className="flex-1 min-w-0">
         <p className="text-ice/90 text-sm truncate">{book.title}</p>
         {book.publishedYear && (
@@ -208,7 +224,7 @@ function BookRow({ book }) {
           <span className="text-amber text-xs">{'★'.repeat(book.rating)}</span>
         )}
       </div>
-    </div>
+    </button>
   )
 }
 

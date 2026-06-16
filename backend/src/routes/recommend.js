@@ -1,8 +1,16 @@
 import { Router } from 'express'
-import { recommendBooks, recommendAuthors } from '../services/recommendService.js'
+import { recommendBooks, recommendAuthors, forYouRecommendations } from '../services/recommendService.js'
 import { ValidationError } from '../utils/errors.js'
 
 const router = Router()
+
+// GET /api/recommend/for-you?seeds=5&perSeed=4
+router.get('/for-you', async (req, res) => {
+  const maxSeeds = Math.min(parseInt(req.query.seeds)   || 5, 8)
+  const perSeed  = Math.min(parseInt(req.query.perSeed) || 4, 8)
+  const data = await forYouRecommendations({ maxSeeds, perSeed })
+  res.json({ success: true, data })
+})
 
 // GET /api/recommend/book/:id?limit=10
 router.get('/book/:id', async (req, res) => {

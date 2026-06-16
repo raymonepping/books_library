@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Rounded square background — Blood (#c0392b) -->
+  <rect width="64" height="64" rx="14" fill="#c0392b"/>
+
+  <!-- Open book — white -->
+  <!-- Left page: curves inward toward the spine -->
+  <path d="M 10 18 C 10 16 12 15 14 16 C 19 17 25 19 30 20 L 30 47 C 25 46 18 44 13 43 C 11 42 10 41 10 39 Z" fill="white"/>
+  <!-- Right page: mirror -->
+  <path d="M 54 18 C 54 16 52 15 50 16 C 45 17 39 19 34 20 L 34 47 C 39 46 46 44 51 43 C 53 42 54 41 54 39 Z" fill="white"/>
+  <!-- Spine -->
+  <rect x="30" y="17" width="4" height="30" rx="2" fill="white"/>
+</svg>
