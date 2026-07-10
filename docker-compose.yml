@@ -15,7 +15,37 @@ services:
     cap_add:
       - IPC_LOCK
     networks:
+<<<<<<< HEAD
       - shared_infra
+=======
+      vault_chronicles:
+        aliases: [couchbase]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Vault (security core)
+  vault:
+    profiles: [default, security]
+    build:
+      context: ./vault
+      dockerfile: Dockerfile
+    image: booklib-vault:${VAULT_VERSION}
+    container_name: vault_library
+    hostname: vault
+    labels:
+      - "category=security"
+      - "stack=booklib"
+      - "tier=core"
+    cap_add: ["IPC_LOCK"]
+    environment:
+      VAULT_LOG_LEVEL: info
+    ports:
+      - "${VAULT_PORT}:${VAULT_PORT}"
+>>>>>>> 042585f (10/07/2026 - Updated configuration and fixed bugs)
     volumes:
       - ./backend/vault/config:/vault/config:ro
       - ./backend/vault/templates:/vault/templates:ro
@@ -35,7 +65,40 @@ services:
     container_name: bibliotheek-backend
     env_file: .env
     environment:
+<<<<<<< HEAD
       CONTAINER_NAME: bibliotheek-backend
+=======
+      VAULT_ADDR: http://vault_library:8200
+      SKIP_SETCAP: "1"
+      VAULT_DISABLE_MLOCK: "true"
+    command: ["vault","agent","-config=/vault/agent/agent.hcl","-log-level=info"]
+    volumes:
+      - ./vault-agent/config/agent.hcl:/vault/agent/agent.hcl:ro
+      - ./vault-agent/config/approle:/vault/approle:ro
+      - ./vault-agent/templates:/vault/templates:ro
+      - ./vault-agent/output:/vault/secrets
+    restart: unless-stopped
+    networks:
+      vault_chronicles:
+        aliases: [vault-agent]    
+
+  # MinIO (object storage for covers)
+  minio_srv:
+    profiles: [default, storage]
+    build:
+      context: ./minio_srv
+      dockerfile: Dockerfile
+    container_name: minio
+    hostname: minio
+    labels:
+      - "category=storage"
+      - "stack=booklib"
+      - "tier=core"
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+>>>>>>> 042585f (10/07/2026 - Updated configuration and fixed bugs)
     ports:
       - "${BACKEND_HOST_PORT:-3002}:3000"
     networks:
@@ -72,7 +135,12 @@ services:
     restart: unless-stopped
 
 networks:
+<<<<<<< HEAD
   app:
+=======
+  vault_chronicles:
+    name: vault_chronicles
+>>>>>>> 042585f (10/07/2026 - Updated configuration and fixed bugs)
     driver: bridge
 
   # Shared network that hosts vault-haproxy, couchbase, and ollama
