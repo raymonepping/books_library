@@ -209,3 +209,35 @@ Check: `admin.js::enrich-authors` was fixed to call `runEnrichment({ authorId, f
 4. **KV-first enrichment reads** — replaced enrichment SQL++ document retrieval with direct KV operations and one-time range scans.
 5. **Book language enrichment** — full JSON documents now preserve `language` without a reserved-word SQL++ projection.
 6. **Enrichment query parsing failure** — removed the failing `b.language` / `AS language` SQL++ projection from the worker.
+
+
+---
+
+## Completed Features (2026-06-16)
+
+### Reader Profile & Enhanced Series Page
+
+**Implemented:**
+- Reader taste profile generation from completed series
+- Weighted vector computation (rating × readStatus × series completion)
+- L2-normalized 768-dim profile vector for similarity matching
+- Structured aggregation (subgenres, tone, themes, pacing, violence, geographies)
+- LLM-generated literary portrait via Ollama `llama3.2`
+- Author orbit and persons of interest tracking
+- Auto-recalculation triggers on book/series changes
+- Similar series recommendations with WHY explanations
+- Bridging reads (standalone books similar to a series)
+- Series vector caching (5-min TTL)
+- Enhanced SeriesDetailPage with profile display
+- API endpoints: `GET /api/profile`, `POST /api/profile/recalculate`, `GET /api/series/:id/similar`, `GET /api/series/:id/bridging`
+- Frontend components: ReaderProfile, SimilarSeries, BridgingReads
+- Init script: `npm run profile:init` for first-time setup
+
+**Files created/modified:**
+- Backend: `profileService.js`, `routes/profile.js`, `scripts/init-profile.js`
+- Backend updates: `seriesService.js` (similar/bridging + vector cache), `bookService.js` (cache invalidation)
+- Frontend: `api/profile.js`, `api/series.js`, `pages/SeriesDetailPage.jsx`, `components/series/*`
+- Routing: Added `/series/:id` route in `App.jsx`
+- Documentation: Updated `architecture.md` with Reader Profile section
+
+---

@@ -1,33 +1,54 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, BookOpen, User, Bot, Loader2 } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send, BookOpen, User, Bot, Loader2, RotateCcw, Copy, Check } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { streamLibrarianChat } from '../api/librarian.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const STARTERS = {
+  recommendations: [
+    'Ik hou van boeken van Chris Carter. Welke vergelijkbare auteurs staan er in mijn bibliotheek?',
+    'Wat moet ik lezen als ik Doodvonnis van Andreas Gruber geweldig vond?',
+  ],
+  authors: [
+    'Vertel me meer over de schrijfstijl van Jo Nesbø.',
+    'Welke boeken van Dan Brown staan er in mijn bibliotheek?',
+  ],
+  themes: [
+    'Welke boeken in mijn bibliotheek gaan over seriemoordenaars?',
+    'Welke boeken in mijn bibliotheek spelen zich af in Scandinavië?',
+  ],
+  unread: [
+    'Welke ongelezen thrillers heb ik op mijn wishlist staan?',
+    'Wat zijn mijn best beoordeelde ongelezen boeken?',
+  ],
+}
 
-const STARTERS = [
-  'Ik hou van boeken van Chris Carter. Welke vergelijkbare auteurs staan er in mijn bibliotheek?',
-  'Vertel me meer over de schrijfstijl van Jo Nesbø.',
-  'Welke boeken in mijn bibliotheek gaan over seriemoordenaars?',
-  'Wat moet ik lezen als ik Doodvonnis van Andreas Gruber geweldig vond?',
-  'Welke boeken in mijn bibliotheek spelen zich af in Scandinavië?',
-]
-
-function SourceBadge({ source }) {
+function SourceCard({ source }) {
   const href = source.type === 'book'
-    ? `/books?highlight=${encodeURIComponent(source.id)}`
+    ? `/books/${encodeURIComponent(source.id)}`
     : `/authors/${encodeURIComponent(source.id)}`
+  
   return (
-    <a
-      href={href}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-white/[0.06] text-ice/60 hover:text-ice hover:bg-white/10 transition-colors"
+    <Link
+      to={href}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-white/[0.06] text-ice/60 hover:text-ice hover:bg-white/10 transition-colors border border-white/5"
     >
-      {source.type === 'book' ? <BookOpen size={10} /> : <User size={10} />}
-      {source.type === 'book' ? source.title : source.name}
-    </a>
+      {source.type === 'book' ? <BookOpen size={12} /> : <User size={12} />}
+      <span className="font-medium">{source.type === 'book' ? source.title : source.name}</span>
+      {source.author && <span className="text-ice/40">· {source.author}</span>}
+    </Link>
   )
 }
 
-function Message({ msg }) {
+function Message({ msg, onRetry, onCopy }) {
   const isUser = msg.role === 'user'
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
@@ -37,16 +58,42 @@ function Message({ msg }) {
       </div>
 
       {/* Bubble */}
-      <div className={`max-w-[75%] flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`max-w-[75%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
         <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
           ${isUser
             ? 'bg-blood/30 text-ice rounded-tr-sm'
             : 'bg-white/[0.06] text-ice/90 rounded-tl-sm'}`}>
           {msg.content}
         </div>
-        {msg.sources?.length > 0 && (
-          <div className="flex flex-wrap gap-1 px-1">
-            {msg.sources.map((s, i) => <SourceBadge key={i} source={s} />)}
+
+        {/* Actions & Sources */}
+        {!isUser && (
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            {msg.sources?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {msg.sources.map((s, i) => <SourceCard key={i} source={s} />)}
+              </div>
+            )}
+            <div className="flex gap-1 ml-auto">
+              {onCopy && (
+                <button
+                  onClick={handleCopy}
+                  className="p-1.5 rounded hover:bg-white/5 text-ice/40 hover:text-ice/60 transition-colors"
+                  title="Kopieer antwoord"
+                >
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                </button>
+              )}
+              {msg.error && onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="p-1.5 rounded hover:bg-white/5 text-ice/40 hover:text-ice/60 transition-colors"
+                  title="Probeer opnieuw"
+                >
+                  <RotateCcw size={12} />
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -54,81 +101,159 @@ function Message({ msg }) {
   )
 }
 
-function TypingIndicator() {
+function TypingIndicator({ status }) {
   return (
     <div className="flex gap-3">
       <div className="shrink-0 w-8 h-8 rounded-full bg-amber/20 text-amber flex items-center justify-center">
         <Bot size={14} />
       </div>
-      <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white/[0.06]">
-        <Loader2 size={14} className="text-ice/40 animate-spin" />
+      <div className="flex flex-col gap-1">
+        <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white/[0.06] flex items-center gap-2">
+          <Loader2 size={14} className="text-ice/40 animate-spin" />
+          <span className="text-xs text-ice/40">{status}</span>
+        </div>
       </div>
     </div>
   )
 }
 
 export default function LibrarianPage() {
-  const [messages, setMessages] = useState([
-    {
-      role:    'assistant',
-      content: 'Hoi! Ik ben je persoonlijke bibliothecaris. Vraag me alles over je collectie — ik kan vergelijkbare boeken aanbevelen, je meer vertellen over auteurs of je helpen je volgende boek te vinden.',
-    },
-  ])
-  const [input,   setInput]   = useState('')
+  const [messages, setMessages] = useState([{
+    id: 'welcome',
+    role: 'assistant',
+    content: 'Hoi! Ik ben je persoonlijke bibliothecaris. Vraag me alles over je collectie — ik kan vergelijkbare boeken aanbevelen, je meer vertellen over auteurs of je helpen je volgende boek te vinden.',
+  }])
+  
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
+  const [streamingStatus, setStreamingStatus] = useState('')
+  const [retryMessage, setRetryMessage] = useState(null)
+  
   const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const inputRef = useRef(null)
+  const abortControllerRef = useRef(null)
+  const messageIdCounter = useRef(0)
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  }, [messages, loading, streamingContent])
 
-  async function send(text) {
+  const send = useCallback(async (text, isRetry = false) => {
     const message = (text ?? input).trim()
     if (!message || loading) return
 
+    // Cancel any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: message }])
+    setStreamingContent('')
+    setStreamingStatus('Zoeken in collectie...')
+    
+    const userMsgId = `user-${++messageIdCounter.current}`
+    const assistantMsgId = `assistant-${++messageIdCounter.current}`
+    
+    if (!isRetry) {
+      setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: message }])
+    }
+    
     setLoading(true)
+    setRetryMessage(message)
+
+    // Build history (exclude welcome message and current user message)
+    const history = messages
+      .filter(m => m.id !== 'welcome' && m.id !== userMsgId)
+      .map(m => ({ role: m.role, content: m.content }))
+
+    abortControllerRef.current = new AbortController()
+    let accumulatedContent = ''
+    let sources = []
 
     try {
-      // Build history from current messages (excluding welcome message)
-      const history = messages
-        .filter(m => m.role === 'user' || (m.role === 'assistant' && m !== messages[0]))
-        .map(m => ({ role: m.role, content: m.content }))
-
-      const res = await fetch(`${API_BASE}/librarian/chat`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message, history }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error ?? 'Unknown error')
-
-      setMessages(prev => [...prev, {
-        role:    'assistant',
-        content: json.data.reply,
-        sources: json.data.sources ?? [],
-      }])
+      await streamLibrarianChat(
+        message,
+        history,
+        // onToken
+        (token) => {
+          accumulatedContent += token
+          setStreamingContent(accumulatedContent)
+          setStreamingStatus('Schrijven...')
+        },
+        // onDone
+        (receivedSources) => {
+          sources = receivedSources
+          setMessages(prev => [...prev, {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: accumulatedContent,
+            sources,
+          }])
+          setStreamingContent('')
+          setLoading(false)
+          setRetryMessage(null)
+          inputRef.current?.focus()
+        },
+        // onError
+        (error) => {
+          setMessages(prev => [...prev, {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: error.message,
+            error: true,
+          }])
+          setStreamingContent('')
+          setLoading(false)
+          inputRef.current?.focus()
+        },
+        abortControllerRef.current.signal
+      )
     } catch (err) {
+      if (err.name === 'AbortError') {
+        setStreamingContent('')
+        setLoading(false)
+        return
+      }
+      
       setMessages(prev => [...prev, {
-        role:    'assistant',
-        content: `Sorry, something went wrong: ${err.message}`,
+        id: assistantMsgId,
+        role: 'assistant',
+        content: err.message || 'Er ging iets mis. Probeer het opnieuw.',
+        error: true,
       }])
-    } finally {
+      setStreamingContent('')
       setLoading(false)
       inputRef.current?.focus()
     }
-  }
+  }, [input, loading, messages])
 
-  function onKeyDown(e) {
+  const handleRetry = useCallback(() => {
+    if (retryMessage) {
+      // Remove last error message
+      setMessages(prev => prev.slice(0, -1))
+      send(retryMessage, true)
+    }
+  }, [retryMessage, send])
+
+  const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
     }
   }
 
-  const showStarters = messages.length === 1
+  const showStarters = messages.length === 1 && !loading
 
   return (
     <div className="flex flex-col h-full bg-[#141414]">
@@ -141,22 +266,56 @@ export default function LibrarianPage() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
-        {loading && <TypingIndicator />}
+        {messages.map((msg) => (
+          <Message
+            key={msg.id}
+            msg={msg}
+            onRetry={msg.error ? handleRetry : null}
+            onCopy={msg.role === 'assistant' && !msg.error ? true : null}
+          />
+        ))}
+        
+        {loading && streamingContent && (
+          <div className="flex gap-3">
+            <div className="shrink-0 w-8 h-8 rounded-full bg-amber/20 text-amber flex items-center justify-center">
+              <Bot size={14} />
+            </div>
+            <div className="max-w-[75%] flex flex-col gap-2">
+              <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white/[0.06] text-ice/90 text-sm leading-relaxed whitespace-pre-wrap">
+                {streamingContent}
+                <span className="inline-block w-1 h-4 bg-amber/60 animate-pulse ml-0.5" />
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {loading && !streamingContent && <TypingIndicator status={streamingStatus} />}
         <div ref={bottomRef} />
       </div>
 
       {/* Starters */}
       {showStarters && (
-        <div className="px-6 pb-3 flex flex-wrap gap-2">
-          {STARTERS.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => send(s)}
-              className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-ice/50 hover:text-ice hover:border-white/20 transition-colors cursor-pointer"
-            >
-              {s}
-            </button>
+        <div className="px-6 pb-3 space-y-3">
+          {Object.entries(STARTERS).map(([category, prompts]) => (
+            <div key={category} className="space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wider text-ice/30 font-medium px-1">
+                {category === 'recommendations' && 'Aanbevelingen'}
+                {category === 'authors' && 'Auteurs'}
+                {category === 'themes' && "Thema's"}
+                {category === 'unread' && 'Ongelezen'}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {prompts.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => send(s)}
+                    className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-ice/50 hover:text-ice hover:border-white/20 hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -171,6 +330,7 @@ export default function LibrarianPage() {
             onKeyDown={onKeyDown}
             placeholder="Stel je bibliothecaris een vraag…"
             rows={1}
+            maxLength={2000}
             className="flex-1 bg-transparent text-ice text-sm resize-none outline-none placeholder:text-ice/25 leading-relaxed max-h-32"
             style={{ fieldSizing: 'content' }}
           />
@@ -182,9 +342,13 @@ export default function LibrarianPage() {
             <Send size={14} strokeWidth={2.5} />
           </button>
         </div>
-        <p className="text-ice/20 text-[10px] mt-2 text-center">Enter to send · Shift+Enter for newline · powered by {import.meta.env.VITE_CHAT_MODEL ?? 'llama3.2'}</p>
+        <p className="text-ice/20 text-[10px] mt-2 text-center">
+          Enter to send · Shift+Enter for newline · powered by {import.meta.env.VITE_CHAT_MODEL ?? 'llama3.2:1b'}
+        </p>
       </div>
 
     </div>
   )
 }
+
+// Made with Bob

@@ -7,9 +7,11 @@ const BooksPage         = lazy(() => import('./pages/BooksPage.jsx'))
 const AuthorsPage       = lazy(() => import('./pages/AuthorsPage.jsx'))
 const AuthorProfilePage = lazy(() => import('./pages/AuthorProfilePage.jsx'))
 const SeriesPage        = lazy(() => import('./pages/SeriesPage.jsx'))
+const SeriesDetailPage  = lazy(() => import('./pages/SeriesDetailPage.jsx'))
 const DiscoverPage      = lazy(() => import('./pages/DiscoverPage.jsx'))
 const DashboardPage     = lazy(() => import('./pages/DashboardPage.jsx'))
 const LibrarianPage     = lazy(() => import('./pages/LibrarianPage.jsx'))
+const ExplorePage       = lazy(() => import('./pages/ExplorePage.jsx'))
 const NotFoundPage      = lazy(() => import('./pages/NotFoundPage.jsx'))
 
 function PageFallback() {
@@ -31,7 +33,9 @@ function AnimatedRoutes() {
           <Route path="authors"     element={<Suspense fallback={<PageFallback />}><AuthorsPage /></Suspense>} />
           <Route path="authors/:id" element={<Suspense fallback={<PageFallback />}><AuthorProfilePage /></Suspense>} />
           <Route path="series"      element={<Suspense fallback={<PageFallback />}><SeriesPage /></Suspense>} />
+          <Route path="series/:id"  element={<Suspense fallback={<PageFallback />}><SeriesDetailPage /></Suspense>} />
           <Route path="discover"    element={<Suspense fallback={<PageFallback />}><DiscoverPage /></Suspense>} />
+          <Route path="explore"     element={<Suspense fallback={<PageFallback />}><ExplorePage /></Suspense>} />
           <Route path="dashboard"   element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
           <Route path="librarian"  element={<Suspense fallback={<PageFallback />}><LibrarianPage /></Suspense>} />
           <Route path="*"           element={<Suspense fallback={<PageFallback />}><NotFoundPage /></Suspense>} />

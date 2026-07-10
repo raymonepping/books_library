@@ -41,6 +41,20 @@ router.get('/:id/missing', async (req, res) => {
   res.json({ success: true, data })
 })
 
+// GET /api/series/:id/similar?limit=4
+router.get('/:id/similar', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 4
+  const data = await seriesService.getSimilarSeries(req.params.id, { limit })
+  res.json({ success: true, data })
+})
+
+// GET /api/series/:id/bridging?limit=3
+router.get('/:id/bridging', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 3
+  const data = await seriesService.getBridgingReads(req.params.id, { limit })
+  res.json({ success: true, data })
+})
+
 // DELETE /api/series/:id
 router.delete('/:id', async (req, res) => {
   await seriesService.deleteSeries(req.params.id)

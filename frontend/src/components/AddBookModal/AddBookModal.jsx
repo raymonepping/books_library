@@ -21,7 +21,7 @@ const STATUS_OPTIONS = [
 const EMPTY_MANUAL = {
   title: '', subtitle: '', authors: '', genres: '',
   publishedYear: '', pageCount: '', isbn: '', description: '',
-  coverUrl: '', readStatus: 'want-to-read', owned: false, rating: null,
+  coverUrl: '', readStatus: 'want-to-read', owned: false, wanted: false, rating: null,
 }
 
 export default function AddBookModal() {
@@ -37,7 +37,7 @@ export default function AddBookModal() {
   const [searchState, setSearchState] = useState('idle')
   const [searchError, setSearchError] = useState(null)
   const [preview, setPreview]   = useState(null)
-  const [overrides, setOverrides] = useState({ readStatus: 'want-to-read', owned: false, rating: null })
+  const [overrides, setOverrides] = useState({ readStatus: 'want-to-read', owned: false, wanted: false, rating: null })
   const [manual, setManual]     = useState(EMPTY_MANUAL)
   const [saving, setSaving]     = useState(false)
   const isbnRef  = useRef(null)
@@ -54,7 +54,7 @@ export default function AddBookModal() {
       setSearchState('idle')
       setSearchError(null)
       setPreview(null)
-      setOverrides({ readStatus: 'want-to-read', owned: false, rating: null })
+      setOverrides({ readStatus: 'want-to-read', owned: false, wanted: false, rating: null })
       setManual(EMPTY_MANUAL)
       setSaving(false)
       setTimeout(() => isbnRef.current?.focus(), 50)
@@ -123,6 +123,7 @@ export default function AddBookModal() {
         sources:       preview.sources,
         readStatus:    overrides.readStatus,
         owned:         overrides.owned,
+        wanted:        overrides.wanted,
         rating:        overrides.rating,
       })
       upsertBook(book)
@@ -163,6 +164,7 @@ export default function AddBookModal() {
         coverUrl:      manual.coverUrl.trim(),
         readStatus:    manual.readStatus,
         owned:         manual.owned,
+        wanted:        manual.wanted,
         rating:        manual.rating,
       })
       upsertBook(book)
@@ -393,17 +395,28 @@ function IsbnPreview({ preview, overrides, setOverrides, onSave, saving }) {
         </div>
       </div>
 
-      {/* Owned + Rating row */}
+      {/* Owned + Wanted + Rating row */}
       <div className="flex items-center justify-between gap-4">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={overrides.owned}
-            onChange={e => setOverrides(x => ({ ...x, owned: e.target.checked }))}
-            className="accent-amber w-4 h-4"
-          />
-          <span className="text-ice/70 text-sm">I own this book</span>
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={overrides.owned}
+              onChange={e => setOverrides(x => ({ ...x, owned: e.target.checked }))}
+              className="accent-amber w-4 h-4"
+            />
+            <span className="text-ice/70 text-sm">I own this book</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={overrides.wanted}
+              onChange={e => setOverrides(x => ({ ...x, wanted: e.target.checked }))}
+              className="accent-amber w-4 h-4"
+            />
+            <span className="text-ice/70 text-sm">I want this book</span>
+          </label>
+        </div>
 
         <RatingPicker
           value={overrides.rating}
@@ -517,17 +530,28 @@ function ManualTab({ manual, setManual, onSave, saving }) {
         </div>
       </div>
 
-      {/* Owned + Rating */}
+      {/* Owned + Wanted + Rating */}
       <div className="flex items-center justify-between gap-4">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={manual.owned}
-            onChange={e => set('owned', e.target.checked)}
-            className="accent-amber w-4 h-4"
-          />
-          <span className="text-ice/70 text-sm">I own this book</span>
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={manual.owned}
+              onChange={e => set('owned', e.target.checked)}
+              className="accent-amber w-4 h-4"
+            />
+            <span className="text-ice/70 text-sm">I own this book</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={manual.wanted}
+              onChange={e => set('wanted', e.target.checked)}
+              className="accent-amber w-4 h-4"
+            />
+            <span className="text-ice/70 text-sm">I want this book</span>
+          </label>
+        </div>
         <RatingPicker
           value={manual.rating}
           onChange={r => set('rating', manual.rating === r ? null : r)}

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 import BottomNav from './BottomNav.jsx'
+import Footer from './Footer.jsx'
 import ToastStack from '../ui/ToastStack.jsx'
 import AddBookModal from '../AddBookModal/AddBookModal.jsx'
 import KeyboardShortcutsModal from '../ui/KeyboardShortcutsModal.jsx'
@@ -18,11 +19,12 @@ function LayoutInner() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-12">
         <Outlet />
       </main>
 
       <BottomNav />
+      <Footer />
       <ToastStack />
       <AddBookModal />
       {showHelp && <KeyboardShortcutsModal onClose={() => setShowHelp(false)} />}

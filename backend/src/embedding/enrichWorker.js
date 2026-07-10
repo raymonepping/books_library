@@ -9,38 +9,7 @@ import { buildBookEmbedText, buildAuthorEmbedText } from './bookProfileBuilder.j
 const BATCH_SIZE   = config.EMBED_BATCH_SIZE
 const CONCURRENCY  = config.EMBED_CONCURRENCY
 
-// ── Embedding document key helpers ───────────────────────────────────────────
-
-/**
- * Build the Couchbase key for an embedding document.
- * Author id: "author::jo-nesbo"  → emb::author::jo-nesbo
- * Book id:   "book::isbn-..."    → emb::book::isbn-...
- */
-function embKey(docId) {
-  // docId already contains type prefix: author:: or book::
-  return `emb::${docId}`
-}
-
 // ── Couchbase helpers ─────────────────────────────────────────────────────────
-
-async function upsertEmbedding(docId, refType, vector, profileText) {
-  const key = embKey(docId)
-  const doc = {
-    refType,
-    refId:       docId,
-    vector,
-    profileText,
-    generatedAt: new Date().toISOString(),
-    modelUsed:   config.OLLAMA_EMBED_MODEL,
-    dims:        vector.length,
-  }
-  try {
-    await getScope().collection('embeddings').upsert(key, doc)
-  } catch (err) {
-    logger.warn('[enrichWorker] failed to upsert embedding', { key, err: err.message })
-    throw err
-  }
-}
 
 // Patch the embedding vector and metadata directly onto the source document.
 // embeddingSource: 'enriched' prevents System A from overwriting this vector on save.
@@ -72,11 +41,6 @@ async function upsertProfile(authorId, profile) {
     logger.warn('[enrichWorker] failed to upsert profile', { authorId, err: err.message })
     throw err
   }
-}
-
-async function embeddingExists(docId) {
-  const result = await getScope().collection('embeddings').exists(embKey(docId))
-  return result.exists
 }
 
 async function scanDocuments(collectionName) {
@@ -196,15 +160,14 @@ async function processAuthor(authorDoc, books, force, sem, stats, skipBooks = fa
     }
   }
 
-  // 3. Author embedding
-  if (force || !await embeddingExists(authorId)) {
+  // 3. Author embedding — skip if source doc already has an enriched vector
+  if (force || authorDoc.embeddingSource !== 'enriched') {
     const authorText = buildAuthorEmbedText(authorDoc, profile)
     if (authorText) {
       const acquire = sem()
       const release = await acquire
       try {
         const vec = await embed(authorText)
-        await upsertEmbedding(authorId, 'author', vec, authorText)
         await patchDocEmbedding('authors', authorId, vec)
         stats.authorEmbeddings++
       } catch (err) {
@@ -216,19 +179,26 @@ async function processAuthor(authorDoc, books, force, sem, stats, skipBooks = fa
     }
   }
 
-  // 4. Book embeddings
+  // 4. Book embeddings — skip if source doc already has an embedding
   if (!skipBooks) {
     for (const book of authorBooks) {
-      if (!force && await embeddingExists(book.id)) continue
+      if (!force && book.embedding?.length > 0) continue
 
-      const bookText = buildBookEmbedText(book, authorDoc, profile)
+      let seriesName = null
+      if (book.seriesId) {
+        try {
+          const seriesDoc = await getScope().collection('series').get(book.seriesId)
+          seriesName = seriesDoc.content.name ?? null
+        } catch { /* series doc missing — Series line omitted from embed text */ }
+      }
+
+      const bookText = buildBookEmbedText(book, authorDoc, profile, { seriesName })
       if (!bookText) continue
 
       const acquire = sem()
       const release = await acquire
       try {
         const vec = await embed(bookText)
-        await upsertEmbedding(book.id, 'book', vec, bookText)
         await patchDocEmbedding('books', book.id, vec)
         stats.bookEmbeddings++
       } catch (err) {
@@ -335,14 +305,21 @@ export async function runBookEnrichment({ force = false, bookId = null, authorId
       }
     }
 
-    const bookText = buildBookEmbedText(book, authorDoc, profile)
+    let seriesName = null
+    if (book.seriesId) {
+      try {
+        const seriesDoc = await getScope().collection('series').get(book.seriesId)
+        seriesName = seriesDoc.content.name ?? null
+      } catch { /* series doc missing — Series line omitted */ }
+    }
+
+    const bookText = buildBookEmbedText(book, authorDoc, profile, { seriesName })
     if (!bookText) continue
 
     const acquire = sem()
     const release = await acquire
     try {
       const vec = await embed(bookText)
-      await upsertEmbedding(book.id, 'book', vec, bookText)
       await patchDocEmbedding('books', book.id, vec)
       stats.embeddings++
       onProgress?.({ bookId: book.id, title: bookTitle, lang: book.language, success: true })

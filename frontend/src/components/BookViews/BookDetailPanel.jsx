@@ -105,7 +105,7 @@ export default function BookDetailPanel({ book, onClose, onBookSelect, onFetchCo
           'fixed inset-x-0 bottom-0 z-40 max-h-[92dvh] rounded-t-2xl overflow-y-auto flex flex-col',
           'bg-smoke border-t border-smoke-light shadow-2xl',
           // md+: right-side panel
-          'md:inset-x-auto md:right-0 md:inset-y-0 md:max-h-none md:h-full md:w-96 md:rounded-none md:border-t-0 md:border-l',
+          'md:inset-x-auto md:right-0 md:inset-y-0 md:max-h-none md:h-full md:w-96 md:rounded-none md:border-t-0 md:border-l md:pb-14',
           // lg+: wider with room for two-column layout
           'lg:w-[500px]',
         ].join(' ')}
@@ -464,7 +464,8 @@ function EditForm({ book, bg, fg, initials, onSave, onCancel, saving }) {
     isbn:          book.isbn ?? '',
     description:   book.description ?? '',
     notes:         book.notes ?? '',
-    owned:         book.owned ?? false,
+    owned:         book.owned  ?? false,
+    wanted:        book.wanted ?? false,
     coverUrl:      book.coverUrl ?? '',
     seriesId:      book.seriesId ?? '',
     seriesOrder:   book.seriesOrder ?? '',
@@ -584,10 +585,14 @@ function EditForm({ book, bg, fg, initials, onSave, onCancel, saving }) {
           </Field>
         </div>
 
-        <div className="px-5 py-4 border-b border-smoke-light">
+        <div className="px-5 py-4 border-b border-smoke-light flex items-center gap-6">
           <label className="flex items-center gap-2.5 cursor-pointer select-none">
             <input type="checkbox" checked={form.owned} onChange={e => set('owned', e.target.checked)} className="accent-amber w-4 h-4" />
             <span className="text-ice/70 text-sm">I own this book</span>
+          </label>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input type="checkbox" checked={form.wanted} onChange={e => set('wanted', e.target.checked)} className="accent-amber w-4 h-4" />
+            <span className="text-ice/70 text-sm">I want this book</span>
           </label>
         </div>
 

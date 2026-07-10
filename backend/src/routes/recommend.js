@@ -12,12 +12,13 @@ router.get('/for-you', async (req, res) => {
   res.json({ success: true, data })
 })
 
-// GET /api/recommend/book/:id?limit=10
+// GET /api/recommend/book/:id?limit=10&sameAuthor=1
 router.get('/book/:id', async (req, res) => {
   const { id } = req.params
-  const limit = Math.min(parseInt(req.query.limit) || 10, 50)
+  const limit           = Math.min(parseInt(req.query.limit)      || 10, 50)
+  const sameAuthorSlots = Math.min(parseInt(req.query.sameAuthor) ||  1,  3)
   if (!id?.startsWith('book::')) throw new ValidationError('id must be a book id (book::...)')
-  const data = await recommendBooks(id, { limit })
+  const data = await recommendBooks(id, { limit, sameAuthorSlots })
   res.json({ success: true, data })
 })
 

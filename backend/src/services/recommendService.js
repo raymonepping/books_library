@@ -20,10 +20,29 @@ function blendScore(g1, emb, hasEmbedding) {
   return hasEmbedding ? 0.35 * g1 + 0.65 * emb : g1
 }
 
+// Stratified author sampling — ensures at most `sameAuthorSlots` books from
+// the seed author appear in results. Degrades gracefully when the library is small.
+function diversify(candidates, seedAuthorIds, limit, sameAuthorSlots = 1) {
+  const sameAuthor   = []
+  const otherAuthors = []
+  for (const c of candidates) {
+    const isSame = (c.authors ?? []).some(a => seedAuthorIds.has(a.id))
+    if (isSame) sameAuthor.push(c)
+    else otherAuthors.push(c)
+  }
+  const result = [
+    ...sameAuthor.slice(0, sameAuthorSlots),
+    ...otherAuthors.slice(0, limit - sameAuthorSlots),
+  ]
+  if (result.length < limit)
+    result.push(...sameAuthor.slice(sameAuthorSlots, limit - result.length + sameAuthorSlots))
+  return result.slice(0, limit)
+}
+
 // ---------------------------------------------------------------------------
 // Books
 // ---------------------------------------------------------------------------
-export async function recommendBooks(bookId, { limit = 10 } = {}) {
+export async function recommendBooks(bookId, { limit = 10, sameAuthorSlots = 1 } = {}) {
   const scope = getScope()
   const cluster = getCluster()
 
@@ -97,7 +116,9 @@ export async function recommendBooks(bookId, { limit = 10 } = {}) {
     }
   }
 
-  const recommendations = candidates.slice(0, limit).map(c => {
+  const seedAuthorIds = new Set((seed.authors ?? []).map(a => a.id))
+  const diversified   = diversify(candidates, seedAuthorIds, limit, sameAuthorSlots)
+  const recommendations = diversified.map(c => {
     const g1 = genreScore(c.genreMatches, seedGenres.length)
     const matchedGenres = seedGenres.filter(g => (c.genres ?? []).includes(g))
     return {

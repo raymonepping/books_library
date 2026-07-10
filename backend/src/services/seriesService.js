@@ -3,6 +3,8 @@ import { getCluster, getScope } from '../config/couchbase.js'
 import { seriesId, slugify } from '../utils/idGenerator.js'
 import { NotFoundError, ValidationError } from '../utils/errors.js'
 import { logger } from '../config/logger.js'
+import { recalculateProfile } from './profileService.js'
+import { cosineSim } from './embeddingService.js'
 
 const BUCKET = process.env.COUCHBASE_BUCKET || 'library'
 const SCOPE_NAME = process.env.COUCHBASE_SCOPE || 'library_scope'
@@ -138,6 +140,12 @@ export async function createSeries(data) {
     throw err
   }
   logger.info('[series] created', { id })
+  
+  // Trigger profile recalculation
+  recalculateProfile({ trigger: 'series_change' }).catch(err =>
+    logger.warn('[series] background profile recalculation failed', { err: err.message })
+  )
+  
   return withCompletion(doc)
 }
 
@@ -186,6 +194,12 @@ export async function updateSeries(id, data) {
 
   await col().replace(id, updated)
   logger.info('[series] updated', { id })
+  
+  // Trigger profile recalculation
+  recalculateProfile({ trigger: 'series_change' }).catch(err =>
+    logger.warn('[series] background profile recalculation failed', { err: err.message })
+  )
+  
   return withCompletion(updated)
 }
 
@@ -200,6 +214,11 @@ export async function deleteSeries(id) {
     throw err
   }
   logger.info('[series] deleted', { id })
+  
+  // Trigger profile recalculation
+  recalculateProfile({ trigger: 'series_change' }).catch(err =>
+    logger.warn('[series] background profile recalculation failed', { err: err.message })
+  )
 }
 
 // ------------------------------------------------------------------------------
@@ -235,4 +254,297 @@ export async function markBookOwned(id, order, { owned }) {
   await col().replace(id, series)
   logger.info('[series] marked book owned', { id, order: orderNum, owned })
   return withCompletion(series)
+}
+
+
+// ------------------------------------------------------------------------------
+// Series vector caching and similarity
+// ------------------------------------------------------------------------------
+
+// In-memory cache for series vectors (5-minute TTL)
+const _seriesVectorCache = new Map()
+const SERIES_VECTOR_TTL = 5 * 60 * 1000
+
+/**
+ * Compute book weight (same as profileService)
+ */
+function bookWeight(book) {
+  const ratingMult = { 5: 2.0, 4: 1.5, 3: 1.0, 2: 0.6, 1: 0.3 }
+  const readMult = book.readStatus === 'read' ? 1.5 : 1.0
+  const rating = book.rating ?? null
+  const rMult = rating ? (ratingMult[rating] ?? 1.0) : 0.8
+  return rMult * readMult
+}
+
+/**
+ * Compute series vector from weighted book embeddings
+ */
+async function computeSeriesVector(seriesId) {
+  const scope = getScope()
+  
+  // Load all books in this series
+  const result = await getCluster().query(
+    `SELECT b.* FROM ${KS_BOOKS} b WHERE b.seriesId = $seriesId`,
+    { parameters: { seriesId } }
+  )
+  const books = result.rows ?? []
+  
+  if (books.length === 0) return null
+  
+  // Compute weighted average of book embeddings
+  const dims = 768
+  const sumVector = new Array(dims).fill(0)
+  let totalWeight = 0
+  let booksWithEmbedding = 0
+  
+  for (const book of books) {
+    if (!book.embedding?.length || book.embedding.length !== dims) continue
+    
+    const weight = bookWeight(book)
+    booksWithEmbedding++
+    
+    for (let i = 0; i < dims; i++) {
+      sumVector[i] += book.embedding[i] * weight
+    }
+    totalWeight += weight
+  }
+  
+  if (totalWeight === 0 || booksWithEmbedding === 0) return null
+  
+  // Weighted average
+  const avgVector = sumVector.map(v => v / totalWeight)
+  
+  // L2-normalize
+  const norm = Math.sqrt(avgVector.reduce((s, v) => s + v * v, 0))
+  const normalized = norm > 0 ? avgVector.map(v => v / norm) : avgVector
+  
+  return normalized
+}
+
+/**
+ * Get series vector with caching
+ */
+async function getSeriesVector(seriesId) {
+  const cached = _seriesVectorCache.get(seriesId)
+  if (cached && Date.now() - cached.ts < SERIES_VECTOR_TTL) {
+    return cached.vector
+  }
+  
+  const vector = await computeSeriesVector(seriesId)
+  if (vector) {
+    _seriesVectorCache.set(seriesId, { vector, ts: Date.now() })
+  }
+  
+  return vector
+}
+
+/**
+ * Invalidate series vector cache (called when books in series change)
+ */
+export function invalidateSeriesVector(seriesId) {
+  _seriesVectorCache.delete(seriesId)
+  logger.debug('[series] vector cache invalidated', { seriesId })
+}
+
+/**
+ * Generate WHY explanation for similar series
+ */
+async function generateSeriesWhy(seedSeries, resultSeries) {
+  const scope = getScope()
+  const reasons = []
+  
+  // Load author profiles for both series
+  const [seedAuthor, resultAuthor] = await Promise.all([
+    seedSeries.authorId ? scope.collection('authors').get(seedSeries.authorId).catch(() => null) : null,
+    resultSeries.authorId ? scope.collection('authors').get(resultSeries.authorId).catch(() => null) : null,
+  ])
+  
+  const seedProfile = seedAuthor?.content?.profile
+  const resultProfile = resultAuthor?.content?.profile
+  
+  if (seedProfile && resultProfile) {
+    // Same subgenre
+    if (seedProfile.subgenre && seedProfile.subgenre === resultProfile.subgenre) {
+      reasons.push(`subgenre: ${resultProfile.subgenre}`)
+    }
+    
+    // Shared tone
+    const sharedTone = (seedProfile.tone ?? []).filter(t => 
+      (resultProfile.tone ?? []).includes(t)
+    )
+    if (sharedTone.length > 0) {
+      reasons.push(`tone: ${sharedTone.slice(0, 2).join('+')}`)
+    }
+    
+    // Shared themes
+    const sharedThemes = (seedProfile.themes ?? []).filter(t => 
+      (resultProfile.themes ?? []).includes(t)
+    )
+    if (sharedThemes.length > 0) {
+      reasons.push(`themes: ${sharedThemes.slice(0, 2).join('+')}`)
+    }
+    
+    // Same geography region
+    if (seedProfile.primarySetting && resultProfile.primarySetting) {
+      const seedGeo = seedProfile.primarySetting.split(',').pop().trim()
+      const resultGeo = resultProfile.primarySetting.split(',').pop().trim()
+      if (seedGeo === resultGeo) {
+        reasons.push(`setting: ${resultGeo}`)
+      }
+    }
+  }
+  
+  return reasons.length > 0 ? reasons.join(' · ') : 'similar themes and style'
+}
+
+/**
+ * Find similar series to a given series
+ */
+export async function getSimilarSeries(seriesId, { limit = 4 } = {}) {
+  // Load target series
+  const targetSeries = await getSeries(seriesId)
+  
+  // Compute target series vector
+  const targetVector = await getSeriesVector(seriesId)
+  if (!targetVector) {
+    return { seriesId, seriesName: targetSeries.name, similar: [] }
+  }
+  
+  // Load all other series
+  const allSeriesResult = await getCluster().query(
+    `SELECT s.*, 
+       IFNULL((SELECT RAW a.name FROM ${KS_AUTHORS} a USE KEYS [s.authorId] LIMIT 1)[0], null) AS authorName
+     FROM ${KS} s
+     WHERE META(s).id != $seriesId`,
+    { parameters: { seriesId } }
+  )
+  const allSeries = allSeriesResult.rows ?? []
+  
+  // Compute similarity scores
+  const scored = []
+  for (const series of allSeries) {
+    const vector = await getSeriesVector(series.id)
+    if (!vector) continue
+    
+    const score = cosineSim(targetVector, vector)
+    if (score > 0) {
+      scored.push({ series, score })
+    }
+  }
+  
+  // Sort by score and take top N
+  scored.sort((a, b) => b.score - a.score)
+  const topSimilar = scored.slice(0, limit)
+  
+  // Generate WHY explanations
+  const similar = await Promise.all(
+    topSimilar.map(async ({ series, score }) => ({
+      seriesId: series.id,
+      seriesName: series.name,
+      authorName: series.authorName,
+      score: Math.round(score * 1000) / 1000,
+      why: await generateSeriesWhy(targetSeries, series),
+    }))
+  )
+  
+  return {
+    seriesId,
+    seriesName: targetSeries.name,
+    similar,
+  }
+}
+
+/**
+ * Find standalone books that bridge to a series
+ */
+export async function getBridgingReads(seriesId, { limit = 3 } = {}) {
+  // Compute series vector
+  const seriesVector = await getSeriesVector(seriesId)
+  if (!seriesVector) {
+    return { seriesId, bridging: [] }
+  }
+  
+  // Load all standalone books (no seriesId)
+  const standaloneResult = await getCluster().query(
+    `SELECT b.* FROM ${KS_BOOKS} b 
+     WHERE (b.seriesId IS MISSING OR b.seriesId IS NULL)
+       AND b.embedding IS NOT MISSING`
+  )
+  const standaloneBooks = standaloneResult.rows ?? []
+  
+  // Score by similarity
+  const scored = []
+  for (const book of standaloneBooks) {
+    if (!book.embedding?.length) continue
+    
+    const score = cosineSim(seriesVector, book.embedding)
+    if (score > 0) {
+      scored.push({ book, score })
+    }
+  }
+  
+  // Sort and take top N
+  scored.sort((a, b) => b.score - a.score)
+  const topBridging = scored.slice(0, limit)
+  
+  // Load series for WHY generation
+  const targetSeries = await getSeries(seriesId)
+  const scope = getScope()
+  
+  // Generate WHY for each
+  const bridging = await Promise.all(
+    topBridging.map(async ({ book, score }) => {
+      const reasons = []
+      
+      // Load author profile
+      const authorId = book.authors?.[0]?.id
+      if (authorId) {
+        try {
+          const authorDoc = await scope.collection('authors').get(authorId)
+          const profile = authorDoc.content.profile
+          
+          // Load target series author profile
+          let targetProfile = null
+          if (targetSeries.authorId) {
+            try {
+              const targetAuthorDoc = await scope.collection('authors').get(targetSeries.authorId)
+              targetProfile = targetAuthorDoc.content.profile
+            } catch {}
+          }
+          
+          if (profile && targetProfile) {
+            if (profile.subgenre === targetProfile.subgenre) {
+              reasons.push(`${profile.subgenre}`)
+            }
+            const sharedTone = (profile.tone ?? []).filter(t => 
+              (targetProfile.tone ?? []).includes(t)
+            )
+            if (sharedTone.length > 0) {
+              reasons.push(sharedTone[0])
+            }
+            const sharedThemes = (profile.themes ?? []).filter(t => 
+              (targetProfile.themes ?? []).includes(t)
+            )
+            if (sharedThemes.length > 0) {
+              reasons.push(sharedThemes[0])
+            }
+          }
+        } catch {}
+      }
+      
+      return {
+        bookId: book.id,
+        title: book.title,
+        authorName: book.authors?.[0]?.name ?? '',
+        coverUrl: book.coverUrl ?? '',
+        score: Math.round(score * 1000) / 1000,
+        why: reasons.length > 0 ? reasons.join(' · ') : 'similar themes',
+      }
+    })
+  )
+  
+  return {
+    seriesId,
+    bridging,
+  }
 }

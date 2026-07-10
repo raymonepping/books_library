@@ -1,7 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Layers, ShoppingCart, Pencil, Plus, ChevronDown, Trash2, SlidersHorizontal, X } from 'lucide-react'
 import { seriesApi } from '../api/series.js'
+import { profileApi } from '../api/profile.js'
 import SeriesEditor from '../components/series/SeriesEditor.jsx'
+import ReaderProfile from '../components/series/ReaderProfile.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 import AutocompleteInput from '../components/ui/AutocompleteInput.jsx'
 
@@ -10,6 +12,8 @@ export default function SeriesPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(true)
   const [toggling, setToggling] = useState(null) // `${seriesId}:${order}`
   const [editingSeries, setEditingSeries] = useState(null) // null | series object | 'new'
   const [filterOpen, setFilterOpen] = useState(false)
@@ -19,10 +23,17 @@ export default function SeriesPage() {
   function resetFilters() { setFilters({ sort: 'name', completion: '', status: '', author: '' }) }
 
   useEffect(() => {
+    // Load series
     seriesApi.list({ limit: 100 })
       .then(d => { setSeries(d.series); setTotal(d.total) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+    
+    // Load profile
+    profileApi.get()
+      .then(p => setProfile(p))
+      .catch(e => console.warn('Profile not available:', e.message))
+      .finally(() => setProfileLoading(false))
   }, [])
 
   async function handleToggleOwned(seriesId, order, currentlyOwned) {
@@ -93,9 +104,9 @@ export default function SeriesPage() {
   const activeFilterCount = ['completion', 'status', 'author'].filter(k => filters[k]).length
 
   return (
-    <div className="flex h-full">
-      {/* Main list */}
-      <div className="flex flex-col flex-1 min-w-0 h-full">
+    <div className="flex h-full gap-4">
+      {/* Main list - 30% of space */}
+      <div className="flex flex-col w-[30%] min-w-0 h-full">
         <header className="flex items-center gap-2 px-6 py-4 border-b border-smoke-light shrink-0">
           <h1 className="font-serif text-xl text-ice mr-auto">
             Series
@@ -239,7 +250,7 @@ export default function SeriesPage() {
           )}
 
           {!loading && processedSeries.length > 0 && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {processedSeries.map(s => (
                 <SeriesCard
                   key={s.id}
@@ -254,6 +265,30 @@ export default function SeriesPage() {
           )}
         </div>
       </div>
+
+      {/* Right sidebar with profile */}
+      {!editingSeries && (
+        <div className="hidden lg:block w-[68%] shrink-0 h-full overflow-y-auto pl-2 pr-4 py-6 space-y-6">
+          {profileLoading ? (
+            <div className="flex items-center justify-center h-48">
+              <Spinner size={24} />
+            </div>
+          ) : profile ? (
+            <ReaderProfile
+              profile={profile}
+              onRecalculate={async () => {
+                const updated = await profileApi.recalculate()
+                setProfile(updated)
+              }}
+            />
+          ) : (
+            <div className="bg-steel-dim/30 rounded-lg p-6 text-center">
+              <p className="text-ice/40 text-sm">Profile not available</p>
+              <p className="text-ice/30 text-xs mt-2">Add more series to generate your profile</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Editor panel — right sidebar on md+, full-screen overlay on mobile */}
       {editingSeries && (
@@ -289,19 +324,19 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit, onDelete }) {
   const listId    = `series-${series.id}-books`
 
   return (
-    <div className="bg-smoke border border-smoke-light rounded-lg overflow-hidden">
+    <div className="bg-smoke border border-smoke-light rounded overflow-hidden">
       {/* Card header */}
       <button
         type="button"
         aria-expanded={!collapsed}
         aria-controls={listId}
-        className="w-full text-left px-5 py-4 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-steel"
+        className="w-full text-left px-4 py-3 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-steel"
         onClick={() => { setCollapsed(c => !c); setConfirmDelete(false) }}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 id={headingId} className="font-serif text-ice text-base font-semibold">{series.name}</h2>
-            <p className="text-ice/40 text-xs mt-0.5">
+            <h2 id={headingId} className="font-serif text-ice text-sm font-semibold">{series.name}</h2>
+            <p className="text-ice/40 text-[11px] mt-0.5">
               {series.ownedCount ?? 0} of {series.totalBooks} owned
               {isComplete && (
                 <span className="ml-2 text-amber">· Complete</span>
@@ -368,7 +403,7 @@ function SeriesCard({ series, toggling, onToggleOwned, onEdit, onDelete }) {
         </div>
 
         {/* Progress bar */}
-        <div className="mt-3 h-2 bg-smoke-light rounded overflow-hidden">
+        <div className="mt-2 h-1.5 bg-smoke-light rounded overflow-hidden">
           <div
             className="h-full rounded transition-all duration-500"
             style={{
@@ -414,11 +449,11 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
 
   return (
     <div className={[
-      'flex items-center gap-4 px-5 py-3 transition-colors',
+      'flex items-center gap-3 px-4 py-2 transition-colors',
       book.owned ? 'bg-transparent' : 'bg-blood/3',
     ].join(' ')}>
       {/* Order number */}
-      <span className="text-ice/30 text-xs font-mono w-5 shrink-0 text-right">
+      <span className="text-ice/30 text-[10px] font-mono w-4 shrink-0 text-right">
         {book.seriesOrder}
       </span>
 
@@ -427,21 +462,21 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
         <img
           src={book.coverUrl || `/api/covers/${book.bookId}`}
           alt=""
-          className="w-7 h-10 object-cover rounded-sm shrink-0 opacity-80"
+          className="w-6 h-9 object-cover rounded-sm shrink-0 opacity-80"
           onError={e => { e.currentTarget.style.display = 'none' }}
         />
       )}
 
       {/* Title + original/alt */}
       <div className="flex-1 min-w-0">
-        <p className={['text-sm truncate', book.owned ? 'text-ice/80' : 'text-ice/40'].join(' ')}>
+        <p className={['text-xs truncate', book.owned ? 'text-ice/80' : 'text-ice/40'].join(' ')}>
           {book.title || `Book ${book.seriesOrder}`}
         </p>
         {subtitle && (
-          <p className="text-ice/25 text-xs truncate">{subtitle}</p>
+          <p className="text-ice/25 text-[10px] truncate">{subtitle}</p>
         )}
         {book.publishedYear && (
-          <p className="text-ice/30 text-xs">{book.publishedYear}</p>
+          <p className="text-ice/30 text-[10px]">{book.publishedYear}</p>
         )}
       </div>
 
@@ -451,7 +486,7 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
           href={missingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-steel hover:text-ice text-xs flex items-center gap-1 shrink-0 transition-colors"
+          className="text-steel hover:text-ice text-[10px] flex items-center gap-1 shrink-0 transition-colors"
           title="Find on bol.com"
         >
           <ShoppingCart size={12} />
@@ -465,7 +500,7 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
         disabled={isToggling}
         title={book.owned ? 'Mark as not owned' : 'Mark as owned'}
         className={[
-          'w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer',
+          'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer',
           'disabled:opacity-40',
           book.owned
             ? 'border-amber bg-amber'
@@ -473,7 +508,7 @@ function SeriesBookRow({ book, seriesId, isToggling, onToggle }) {
         ].join(' ')}
       >
         {book.owned && (
-          <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-noir">
+          <svg viewBox="0 0 10 8" className="w-2 h-1.5 fill-noir">
             <path d="M1 4l3 3 5-6" stroke="#0d0d0d" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}

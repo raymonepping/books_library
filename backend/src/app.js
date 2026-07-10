@@ -24,7 +24,10 @@ import recommendRouter from './routes/recommend.js'
 import dashboardRouter from './routes/dashboard.js'
 import adminRouter from './routes/admin.js'
 import similarityRouter  from './routes/similarity.js'
-import librarianRouter  from './routes/librarian.js'
+import librarianRouter            from './routes/librarian.js'
+import profileRouter             from './routes/profile.js'
+import vectorsRouter             from './routes/vectors.js'
+import { warmupLibrarian }       from './services/librarianService.js'
 
 const app = express()
 const PORT = config.PORT
@@ -62,6 +65,8 @@ app.use('/api/dashboard', dashboardRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/similarity', similarityRouter)
 app.use('/api/librarian', librarianRouter)
+app.use('/api/profile', profileRouter)
+app.use('/api/vectors', vectorsRouter)
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: `Cannot ${req.method} ${req.path}` })
@@ -75,7 +80,10 @@ async function start() {
   startHealthPoller()
   watchSecrets()
 
-  const server = app.listen(PORT, () => logger.info(`[app] listening on :${PORT}`))
+  const server = app.listen(PORT, () => {
+    logger.info(`[app] listening on :${PORT}`)
+    warmupLibrarian()
+  })
 
   // Graceful shutdown — give in-flight requests 10s to drain
   function shutdown(signal) {

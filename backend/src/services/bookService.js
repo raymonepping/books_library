@@ -3,10 +3,13 @@ import { getCluster, getScope } from '../config/couchbase.js'
 import { bookId } from '../utils/idGenerator.js'
 import { NotFoundError, ValidationError } from '../utils/errors.js'
 import { logger } from '../config/logger.js'
+import { analyseDescription } from './enrichService.js'
 import { downloadAndStoreCover } from './coverService.js'
 import { ensureAuthors } from './authorService.js'
 import { buildBookText, getEmbedding, persistEmbedding } from './embeddingService.js'
 import { runBookEnrichment } from '../embedding/enrichWorker.js'
+import { recalculateProfile } from './profileService.js'
+import { invalidateSeriesVector } from './seriesService.js'
 
 function scheduleBookEmbedding(id, doc) {
   // Don't overwrite a rich System B embedding with a basic System A one
@@ -19,6 +22,17 @@ function scheduleBookEmbedding(id, doc) {
       logger.warn('[books] embedding returned null — Ollama unavailable?', { id })
     })
     .catch(err => logger.warn('[books] scheduleBookEmbedding failed', { id, err: err.message }))
+}
+
+async function runDescriptionAnalysis(description, bookId) {
+  try {
+    const result = await analyseDescription(description)
+    logger.info('[books] genre analysis complete', { bookId, genres: result.genres.join(', ') })
+    return result
+  } catch (err) {
+    logger.error('[books] genre analysis failed — saving with empty genres', { bookId, err: err.message })
+    return { genres: [], sentiment: null, styleFingerprint: '' }
+  }
 }
 
 function scheduleBookReEnrichment(id) {
@@ -65,7 +79,7 @@ function seriesCol() {
 
 // When a book's seriesId/seriesOrder changes, keep the series document's
 // books[].bookId slot in sync so the series page reflects the link.
-async function syncSeriesLink(bookId, oldSeriesId, newSeriesId, seriesOrder, owned, bookTitle, bookCoverUrl) {
+async function syncSeriesLink(bookId, oldSeriesId, newSeriesId, seriesOrder, book) {
   // Unlink from the old series if the series changed
   if (oldSeriesId && oldSeriesId !== newSeriesId) {
     try {
@@ -94,12 +108,21 @@ async function syncSeriesLink(bookId, oldSeriesId, newSeriesId, seriesOrder, own
         books[idx] = {
           ...books[idx],
           bookId,
-          owned: Boolean(owned),
-          // Fill title/coverUrl from the linked book if the slot was empty
-          title:    books[idx].title    || bookTitle    || books[idx].title,
-          coverUrl: books[idx].coverUrl || bookCoverUrl || books[idx].coverUrl,
+          owned:         Boolean(book.owned),
+          title:         book.title         || books[idx].title         || '',
+          originalTitle: book.originalTitle || books[idx].originalTitle || '',
+          altTitles:     book.altTitles?.length ? book.altTitles : (books[idx].altTitles ?? []),
+          isbn:          book.isbn13 || book.isbn || books[idx].isbn    || '',
+          publishedYear: book.publishedYear  ?? books[idx].publishedYear ?? null,
+          coverUrl:      book.coverUrl       || books[idx].coverUrl,
         }
-        await seriesCol().replace(newSeriesId, { ...doc.content, books })
+        // Populate series.authorId from the book's first author if not yet set
+        const seriesDoc = { ...doc.content, books }
+        if (!seriesDoc.authorId) {
+          const firstAuthorId = book.authors?.[0]?.id ?? null
+          if (firstAuthorId) seriesDoc.authorId = firstAuthorId
+        }
+        await seriesCol().replace(newSeriesId, seriesDoc)
         logger.info('[books] linked into series', { bookId, newSeriesId, seriesOrder })
       } else {
         logger.warn('[books] no slot found for seriesOrder — series may need that entry added manually', { bookId, newSeriesId, seriesOrder })
@@ -203,13 +226,16 @@ export async function createBook(data) {
     seriesOrder: data.seriesOrder ?? null,
     authors: authorObjs,
     genres: data.genres ?? [],
+    sentiment: null,
+    styleFingerprint: '',
     tags: data.tags ?? [],
     language: data.language ?? '',
     publishedYear: data.publishedYear ?? null,
     pageCount: data.pageCount ?? null,
     coverUrl: data.coverUrl ?? '',
     description: data.description ?? '',
-    owned: data.owned ?? false,
+    owned:  data.owned  ?? false,
+    wanted: data.wanted ?? false,
     readStatus: READ_STATUSES.has(data.readStatus) ? data.readStatus : 'want-to-read',
     finishedAt: null,
     progress: null,
@@ -219,10 +245,26 @@ export async function createBook(data) {
     notes: data.notes ?? '',
     embedding: null,
   }
+  if (doc.description?.trim()) {
+    const analysis = await runDescriptionAnalysis(doc.description, id)
+    doc.genres           = analysis.genres
+    doc.sentiment        = analysis.sentiment
+    doc.styleFingerprint = analysis.styleFingerprint
+  }
+
   await col().insert(id, doc)
   logger.info('[books] created', { id })
 
   scheduleBookEmbedding(id, doc)
+  
+  // Trigger profile recalculation if book is part of a series
+  if (doc.seriesId) {
+    recalculateProfile({ trigger: 'book_change' }).catch(err =>
+      logger.warn('[books] background profile recalculation failed', { err: err.message })
+    )
+    // Invalidate series vector cache
+    invalidateSeriesVector(doc.seriesId)
+  }
 
   // Fire-and-forget: download cover and swap coverUrl to local path
   if (doc.coverUrl?.startsWith('http')) {
@@ -261,12 +303,43 @@ export async function updateBook(id, data) {
       : existing.content.authors,
   }
   updated.updatedAt = new Date().toISOString()
+
+  const oldDesc = existing.content.description?.trim() ?? ''
+  const newDesc = updated.description?.trim() ?? ''
+  if (updates.description !== undefined && newDesc && newDesc !== oldDesc) {
+    const analysis = await runDescriptionAnalysis(newDesc, id)
+    updated.genres           = analysis.genres
+    updated.sentiment        = analysis.sentiment
+    updated.styleFingerprint = analysis.styleFingerprint
+  }
+
   await col().replace(id, updated)
   logger.info('[books] updated', { id })
+  
+  // Trigger profile recalculation if rating or readStatus changed, or if book has seriesId
+  const PROFILE_TRIGGER_FIELDS = ['rating', 'readStatus']
+  if (updated.seriesId && PROFILE_TRIGGER_FIELDS.some(f => updates[f] !== undefined)) {
+    recalculateProfile({ trigger: 'book_change' }).catch(err =>
+      logger.warn('[books] background profile recalculation failed', { err: err.message })
+    )
+  }
+  
+  // Invalidate series vector cache if book changed series or if semantic fields changed
+  const oldSeriesId = existing.content.seriesId
+  const newSeriesId = updated.seriesId
+  const SEMANTIC_FIELDS_FOR_EMBEDDING = ['title', 'subtitle', 'authors', 'genres', 'description', 'language']
+  const SEMANTIC_FIELDS_FOR_CACHE = [...SEMANTIC_FIELDS_FOR_EMBEDDING, 'rating', 'readStatus']
+  const semanticChanged = SEMANTIC_FIELDS_FOR_CACHE.some(f => updates[f] !== undefined)
+  
+  if (oldSeriesId && (oldSeriesId !== newSeriesId || semanticChanged)) {
+    invalidateSeriesVector(oldSeriesId)
+  }
+  if (newSeriesId && (oldSeriesId !== newSeriesId || semanticChanged)) {
+    invalidateSeriesVector(newSeriesId)
+  }
 
   // Regenerate embedding if any semantic field changed
-  const SEMANTIC_FIELDS = ['title', 'subtitle', 'authors', 'genres', 'description', 'language']
-  if (SEMANTIC_FIELDS.some(f => updates[f] !== undefined)) {
+  if (SEMANTIC_FIELDS_FOR_EMBEDDING.some(f => updates[f] !== undefined)) {
     if (updated.embeddingSource === 'enriched') {
       // Book has a System B vector — re-enrich with the full pipeline so the
       // 14-field embed text stays current after the edit.
@@ -283,9 +356,7 @@ export async function updateBook(id, data) {
       existing.content.seriesId ?? null,
       updated.seriesId ?? null,
       updated.seriesOrder ?? null,
-      updated.owned,
-      updated.title ?? null,
-      updated.coverUrl ?? null,
+      updated,
     ).catch(err => logger.warn('[books] series sync failed', { id, err: err.message }))
   }
 
@@ -304,6 +375,15 @@ export async function updateBook(id, data) {
 }
 
 export async function deleteBook(id) {
+  // Get book before deleting to check if it has seriesId
+  let hadSeriesId = null
+  try {
+    const existing = await kvGet(id)
+    hadSeriesId = existing.content.seriesId ?? null
+  } catch (err) {
+    // Book doesn't exist, will throw below
+  }
+  
   try {
     await col().remove(id)
   } catch (err) {
@@ -311,6 +391,31 @@ export async function deleteBook(id) {
     throw err
   }
   logger.info('[books] deleted', { id })
+  
+  // Trigger profile recalculation if deleted book was part of a series
+  if (hadSeriesId) {
+    recalculateProfile({ trigger: 'book_change' }).catch(err =>
+      logger.warn('[books] background profile recalculation failed', { err: err.message })
+    )
+    // Invalidate series vector cache
+    invalidateSeriesVector(hadSeriesId)
+  }
+}
+
+// Manual re-analyse — called by POST /api/books/:id/analyse
+export async function analyseBook(id) {
+  const existing = await kvGet(id)
+  const description = existing.content.description?.trim()
+  if (!description) throw new ValidationError('Book has no description to analyse')
+  const analysis = await analyseDescription(description)
+  await col().mutateIn(id, [
+    couchbase.MutateInSpec.upsert('genres',           analysis.genres),
+    couchbase.MutateInSpec.upsert('sentiment',        analysis.sentiment),
+    couchbase.MutateInSpec.upsert('styleFingerprint', analysis.styleFingerprint),
+    couchbase.MutateInSpec.upsert('updatedAt',        new Date().toISOString()),
+  ])
+  logger.info('[books] re-analysed', { id, genres: analysis.genres.join(', ') })
+  return getBook(id)
 }
 
 // Targeted status patch — avoids fetching + replacing the whole doc (skips embedding round-trip)

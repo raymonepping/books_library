@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   BookOpen, Users, Layers, Compass, LayoutDashboard, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Plus,
+  PanelLeftClose, PanelLeftOpen, Plus, Atom,
 } from 'lucide-react'
 import { useUIStore } from '../../store/useUIStore.js'
 
@@ -10,6 +10,7 @@ const NAV = [
   { to: '/authors',   icon: Users,           label: 'Authors'   },
   { to: '/series',    icon: Layers,          label: 'Series'    },
   { to: '/discover',  icon: Compass,         label: 'Discover'  },
+  { to: '/explore',   icon: Atom,            label: 'Explore'   },
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/librarian', icon: MessageSquare,   label: 'Librarian' },
 ]

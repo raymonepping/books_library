@@ -2,15 +2,46 @@ import axios from 'axios'
 import { config } from '../config/env.js'
 import { logger } from '../config/logger.js'
 
-const BASE_URL     = config.OLLAMA_BASE_URL
+const BASE_URL      = config.OLLAMA_BASE_URL
 const PROFILE_MODEL = config.OLLAMA_PROFILE_MODEL
-const TIMEOUT      = 120_000  // profile generation can be slow
+const IDLE_TIMEOUT  = 20_000   // ms without a new token before we accept what we have
+const CONNECT_TIMEOUT = 60_000 // ms for initial connection
+const NUM_PREDICT   = 500      // token cap — 13-field JSON needs ~300-400 tokens
 
 const EXPECTED_FIELDS = [
   'nationality', 'originalLanguage', 'primarySetting', 'subgenre',
   'tone', 'protagonistType', 'protagonistName', 'themes',
   'pacing', 'violenceLevel', 'seriesType', 'dutchMarketLabel', 'comparableAuthors',
 ]
+
+const NATIONALITY_LANGUAGE_MAP = {
+  'Swedish':    'Swedish',
+  'Norwegian':  'Norwegian',
+  'Finnish':    'Finnish',
+  'Danish':     'Danish',
+  'Dutch':      'Dutch',
+  'German':     'German',
+  'Austrian':   'German',
+  'British':    'English',
+  'American':   'English',
+  'Canadian':   'English',
+  'Spanish':    'Spanish',
+  'French':     'French',
+  'Italian':    'Italian',
+  'Portuguese': 'Portuguese',
+  'Icelandic':  'Icelandic',
+}
+
+function validateProfile(authorName, profile) {
+  const expected = NATIONALITY_LANGUAGE_MAP[profile.nationality]
+  if (expected && profile.originalLanguage !== expected) {
+    console.warn(
+      `[profile] ⚠  ${authorName}: originalLanguage "${profile.originalLanguage}" ` +
+      `looks wrong for ${profile.nationality} author (expected "${expected}"). ` +
+      `Re-enrich with --force to regenerate.`
+    )
+  }
+}
 
 // Known LLM typo aliases → canonical field name
 const FIELD_ALIASES = {
@@ -62,12 +93,53 @@ Rules:
 }
 
 async function callOllama(prompt) {
-  const res = await axios.post(
-    `${BASE_URL}/api/generate`,
-    { model: PROFILE_MODEL, prompt, stream: false },
-    { timeout: TIMEOUT }
-  )
-  return res.data?.response ?? ''
+  return new Promise((resolve, reject) => {
+    const tokens = []
+    let settled = false
+    let idleTimer = null
+
+    const settle = (text, err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(idleTimer)
+      if (err) reject(err)
+      else resolve(text)
+    }
+
+    const resetIdle = () => {
+      clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        const text = tokens.join('')
+        logger.warn('[profileGenerator] idle timeout — accepting partial response', { tokens: tokens.length })
+        settle(text)
+      }, IDLE_TIMEOUT)
+    }
+
+    axios.post(
+      `${BASE_URL}/api/generate`,
+      { model: PROFILE_MODEL, prompt, stream: true, options: { num_predict: NUM_PREDICT } },
+      { responseType: 'stream', timeout: CONNECT_TIMEOUT }
+    ).then(res => {
+      resetIdle()
+      let buf = ''
+      res.data.on('data', chunk => {
+        resetIdle()
+        buf += chunk.toString()
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const data = JSON.parse(line)
+            if (data.response) tokens.push(data.response)
+            if (data.done) settle(tokens.join(''))
+          } catch {}
+        }
+      })
+      res.data.on('end', () => settle(tokens.join('')))
+      res.data.on('error', err => settle('', err))
+    }).catch(err => reject(err))
+  })
 }
 
 function tryParse(raw) {
@@ -87,7 +159,9 @@ export async function generateAuthorProfile(author, knownDutchTitles) {
   let raw
   try {
     raw = await callOllama(prompt)
-    return normalizeProfile(tryParse(raw))
+    const profile = normalizeProfile(tryParse(raw))
+    validateProfile(author.name, profile)
+    return profile
   } catch (firstErr) {
     logger.warn('[profileGenerator] first parse failed — retrying', {
       author: author.name,
@@ -105,7 +179,9 @@ Please correct it and return only valid JSON with no preamble, explanation, or m
     let retryRaw
     try {
       retryRaw = await callOllama(correctionPrompt)
-      return normalizeProfile(tryParse(retryRaw))
+      const profile = normalizeProfile(tryParse(retryRaw))
+      validateProfile(author.name, profile)
+      return profile
     } catch (secondErr) {
       const snippet = (retryRaw ?? raw ?? '').slice(0, 500)
       throw new Error(

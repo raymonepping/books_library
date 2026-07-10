@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { BookOpen, Users, Layers, Compass, LayoutDashboard } from 'lucide-react'
+import { BookOpen, Users, Compass, Atom, LayoutDashboard } from 'lucide-react'
 
 const NAV = [
   { to: '/books',     icon: BookOpen,        label: 'Library'   },
   { to: '/authors',   icon: Users,           label: 'Authors'   },
-  { to: '/series',    icon: Layers,          label: 'Series'    },
   { to: '/discover',  icon: Compass,         label: 'Discover'  },
+  { to: '/explore',   icon: Atom,            label: 'Explore'   },
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
 ]
 

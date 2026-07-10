@@ -2,6 +2,7 @@ import couchbase from 'couchbase'
 import { getScope } from '../config/couchbase.js'
 import { logger } from '../config/logger.js'
 import { config } from '../config/env.js'
+import { buildEmbeddingInput } from './enrichService.js'
 import { embed as embedFn } from '../embedding/embed.js'
 
 const EMBED_MODEL = config.OLLAMA_EMBED_MODEL
@@ -37,6 +38,9 @@ function cachePut(text, vector) {
 
 // Consistent text representations used both when generating and when looking up
 export function buildBookText(doc) {
+  const enrichedText = buildEmbeddingInput(doc)
+  if (enrichedText) return truncateText(enrichedText)
+
   const parts = [
     doc.title,
     doc.language ? `Language: ${doc.language}` : null,
@@ -99,6 +103,25 @@ export async function getEmbedding(text) {
   }
 }
 
+export async function generateEmbedding(book) {
+  const input = buildEmbeddingInput(book)
+
+  if (!input.trim()) {
+    throw new Error(`Cannot generate embedding for book ${book.id} — no styleFingerprint or sentiment data`)
+  }
+
+  logger.debug(`[embedding] input for ${book.id}: ${input.slice(0, 120)}...`)
+
+  const vector = await embedFn(input)
+
+  if (!Array.isArray(vector) || vector.length === 0) {
+    throw new Error(`Invalid embedding response for book ${book.id}`)
+  }
+
+  logger.info(`[embedding] generated for ${book.id} — ${vector.length} dimensions`)
+  return vector
+}
+
 export function cosineSim(a, b) {
   if (!a?.length || !b?.length || a.length !== b.length) return 0
   let dot = 0, normA = 0, normB = 0
@@ -108,6 +131,11 @@ export function cosineSim(a, b) {
     normB += b[i] * b[i]
   }
   return normA && normB ? dot / (Math.sqrt(normA) * Math.sqrt(normB)) : 0
+}
+
+export function cosineSimilarity(a, b) {
+  if (a.length !== b.length) throw new Error('Vector dimension mismatch')
+  return cosineSim(a, b)
 }
 
 export function clearEmbeddingCache() {

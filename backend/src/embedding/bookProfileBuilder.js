@@ -3,6 +3,8 @@
  * Skip null/undefined fields gracefully.
  */
 
+import { buildEmbeddingInput } from '../services/enrichService.js'
+
 function str(v) { return v != null && v !== '' ? String(v) : null }
 function arr(v) { return Array.isArray(v) && v.length ? v.join(', ') : null }
 
@@ -16,24 +18,42 @@ function truncate(text) {
 /**
  * Build embed text for a single book, combining book metadata with
  * the author's structured profile for richer semantic representation.
+ *
+ * Description appears twice: once near the top (high model attention) and
+ * once at the bottom. This weights per-book content more heavily than shared
+ * author-profile fields, preventing same-author books from collapsing to
+ * near-identical vectors.
+ *
+ * @param {{ seriesName?: string|null }} options
+ *   seriesName — human-readable series name resolved from the series collection.
+ *   Pass null to omit the Series line (raw series:: IDs are never emitted).
  */
-export function buildBookEmbedText(book, author, profile) {
+export function buildBookEmbedText(book, author, profile, { seriesName = null } = {}) {
+  const enrichedText = buildEmbeddingInput(book)
+  if (enrichedText) return truncate(enrichedText)
+
+  const desc = str(book.descriptionNL ?? book.description)
+
   const lines = [
     `Title: ${str(book.title)}`,
-    book.language             ? `Language: ${book.language}`                         : null,
-    author?.name              ? `Author: ${author.name}`                             : null,
-    profile?.nationality      ? `Author nationality: ${profile.nationality}`          : null,
-    profile?.originalLanguage ? `Original language: ${profile.originalLanguage}`     : null,
-    str(book.series) != null  ? `Series: ${book.series}`
-      : (str(book.seriesId) ? `Series: ${book.seriesId}` : 'Series: standalone'),
-    profile?.primarySetting   ? `Setting: ${profile.primarySetting}`                 : null,
-    profile?.subgenre         ? `Subgenre: ${profile.subgenre}`                      : null,
-    arr(profile?.tone)        ? `Tone: ${arr(profile.tone)}`                         : null,
-    arr(profile?.themes)      ? `Themes: ${arr(profile.themes)}`                     : null,
-    profile?.protagonistType  ? `Protagonist: ${profile.protagonistType}`            : null,
-    profile?.pacing           ? `Pacing: ${profile.pacing}`                          : null,
-    profile?.violenceLevel    ? `Violence level: ${profile.violenceLevel}`           : null,
-    str(book.descriptionNL ?? book.description) ? `Description: ${str(book.descriptionNL ?? book.description)}` : null,
+    book.language              ? `Language: ${book.language}`                         : null,
+    arr(book.genres)           ? `Genres: ${arr(book.genres)}`                        : null,
+    arr(book.tags)             ? `Tags: ${arr(book.tags)}`                            : null,
+    desc                       ? `About: ${desc}`                                     : null,
+    author?.name               ? `Author: ${author.name}`                             : null,
+    profile?.nationality       ? `Author nationality: ${profile.nationality}`          : null,
+    profile?.originalLanguage  ? `Original language: ${profile.originalLanguage}`     : null,
+    seriesName                 ? `Series: ${seriesName}`
+      : book.seriesId          ? null
+      : 'Series: standalone',
+    profile?.primarySetting    ? `Setting: ${profile.primarySetting}`                 : null,
+    profile?.subgenre          ? `Subgenre: ${profile.subgenre}`                      : null,
+    arr(profile?.tone)         ? `Tone: ${arr(profile.tone)}`                         : null,
+    arr(profile?.themes)       ? `Themes: ${arr(profile.themes)}`                     : null,
+    profile?.protagonistType   ? `Protagonist: ${profile.protagonistType}`            : null,
+    profile?.pacing            ? `Pacing: ${profile.pacing}`                          : null,
+    profile?.violenceLevel     ? `Violence level: ${profile.violenceLevel}`           : null,
+    desc                       ? `Description: ${desc}`                               : null,
   ]
   return truncate(lines.filter(Boolean).join('\n'))
 }

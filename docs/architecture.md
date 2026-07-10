@@ -29,6 +29,7 @@ Personal Dutch book library application. Core goal: track a reading collection a
 | `books` | `book::{uuid}` | Book documents |
 | `authors` | `author::{slug}` | Author documents — LLM profile stored as `author.profile` sub-object |
 | `series` | `series::{slug}` | Series documents |
+| `profile` | `profile::reader` | Reader taste profile (single document) |
 | `embeddings` | `emb::book::{id}` / `emb::author::{id}` | Shadow embedding records (metadata + profileText) |
 
 > `author_profiles` (previously `profile::author::{slug}`) was dropped. Profile data now lives directly on the author document as `author.profile`.
@@ -80,6 +81,43 @@ Personal Dutch book library application. Core goal: track a reading collection a
   "embeddingSource": "enriched",
   "embeddingModel": "nomic-embed-text",
   "embeddedAt": "2026-06-15T..."
+}
+```
+
+### Reader Profile document shape
+
+```json
+{
+  "id": "profile::reader",
+  "type": "profile",
+  "vector": [/* 768 floats - weighted average of series book embeddings */],
+  "portrait": "You gravitate toward...",
+  "modusOperandi": "Your reading pattern shows...",
+  "subgenres": [
+    { "name": "Nordic noir", "weight": 0.45 },
+    { "name": "Psychological thriller", "weight": 0.32 }
+  ],
+  "tone": [
+    { "name": "Dark", "weight": 0.58 },
+    { "name": "Atmospheric", "weight": 0.41 }
+  ],
+  "themes": [
+    { "name": "Corruption", "weight": 0.35 }
+  ],
+  "pacing": [
+    { "name": "fast-paced", "weight": 0.62 }
+  ],
+  "violence": [
+    { "name": "graphic", "weight": 0.48 }
+  ],
+  "geographies": [
+    { "name": "Scandinavia", "weight": 0.52 }
+  ],
+  "authorOrbit": ["Jo Nesbø", "Stieg Larsson"],
+  "personsOfInterest": ["Harry Hole", "Lisbeth Salander"],
+  "lastCalculated": "2026-06-16T...",
+  "booksAnalyzed": 47,
+  "seriesAnalyzed": 8
 }
 ```
 
@@ -235,6 +273,7 @@ Author recommendations:
 | AuthorsPage | `/authors` | Paginated author grid with autocomplete filter |
 | AuthorProfilePage | `/authors/:id` | Author bio, library books, similar authors |
 | SeriesPage | `/series` | Series cards with completion tracking, bol.com shopping links |
+| SeriesDetailPage | `/series/:id` | Series detail with reader profile, similar series, bridging reads |
 | DiscoverPage | `/discover` | Search + "For You" seeded recommendations + similarity panel |
 | DashboardPage | `/dashboard` | Stats, charts (monthly reading, rating histogram, genre breakdown), heatmap |
 | LibrarianPage | `/librarian` | AI chat with source attribution |
@@ -260,7 +299,8 @@ frontend/src/api/
 ├── client.js     Base fetch wrapper (Bearer token, error handling, AbortController support)
 ├── books.js      booksApi — list, get, create, update, updateStatus, delete, recommend, forYou
 ├── authors.js    authorsApi — list, get, update, recommend
-├── series.js     seriesApi — list, create, update, delete, markOwned
+├── series.js     seriesApi — list, create, update, delete, markOwned, getSimilar, getBridging
+├── profile.js    profileApi — get, recalculate
 ├── search.js     searchApi — search (q, type, page, limit)
 └── dashboard.js  dashboardApi — getStats, getCharts, getHeatmap
 ```
@@ -430,3 +470,85 @@ GET /api/similarity/book/:id
 | `API_TOKEN` | _(empty)_ | Bearer token for mutation endpoints (optional) |
 
 Local dev: credentials in root `.env`. Docker: rendered from Vault Agent into `/vault/secrets/db.env`.
+
+
+---
+
+## Reader Profile System
+
+### Overview
+
+The Reader Profile system analyzes completed series to build a personalized taste profile. It generates:
+- **Weighted vector** (768-dim) — L2-normalized average of book embeddings, weighted by rating and completion
+- **Structured aggregations** — subgenres, tone, themes, pacing, violence, geographies
+- **Literary portrait** — LLM-generated prose description via Ollama `llama3.2`
+- **Author orbit** — frequently read authors
+- **Persons of interest** — recurring protagonists/characters
+
+### Data Flow
+
+```
+Book/Series change
+  → bookService/seriesService triggers recalculateProfile() (fire-and-forget)
+  → profileService.recalculateProfile()
+      1. Load all series with completion > 0
+      2. For each series, load books and compute weighted average embedding
+      3. Aggregate structured data (subgenres, tone, themes, etc.) from author profiles
+      4. Generate portrait via Ollama (with fallback on failure)
+      5. Upsert to profile collection: profile::reader
+```
+
+### Weighting Formula
+
+**Book weight** = `ratingMultiplier × readStatusMultiplier`
+
+| Rating | Multiplier | Read Status | Multiplier |
+|--------|-----------|-------------|-----------|
+| 5 | 2.0 | read | 1.5 |
+| 4 | 1.5 | reading | 1.0 |
+| 3 | 1.0 | want-to-read | 1.0 |
+| 2 | 0.6 | dnf | 1.0 |
+| 1 | 0.3 | - | - |
+| null | 0.8 | - | - |
+
+**Series weight** = `seriesCompletion` (0.0–1.0)
+
+**Final book weight** = `bookWeight × seriesWeight`
+
+### Vector Computation
+
+1. For each book in completed series: `weightedVector[i] = embedding[i] × bookWeight × seriesWeight`
+2. Sum all weighted vectors: `sumVector = Σ weightedVectors`
+3. Weighted average: `avgVector = sumVector / totalWeight`
+4. L2-normalize: `normalized = avgVector / ||avgVector||₂`
+
+This produces a unit-length vector suitable for cosine similarity.
+
+### Similar Series & Bridging Reads
+
+**Similar Series** (`GET /api/series/:id/similar`):
+- Computes series vector from weighted book embeddings (5-min cache)
+- Scores all other series by cosine similarity
+- Generates WHY explanations from author profile overlap (subgenre, tone, themes, setting)
+
+**Bridging Reads** (`GET /api/series/:id/bridging`):
+- Finds standalone books (no seriesId) similar to the series vector
+- Useful for discovering thematically related one-offs
+
+### Auto-Recalculation Triggers
+
+Profile recalculation is triggered (fire-and-forget) when:
+- Book created/updated/deleted (if book has seriesId)
+- Series created/updated/deleted
+- Rating or readStatus changed on a book in a series
+
+Rate-limited to 1 recalculation per 60 seconds via `POST /api/profile/recalculate`.
+
+### Frontend Components
+
+- `ReaderProfile.jsx` — displays portrait, taste grid, author orbit
+- `SimilarSeries.jsx` — series recommendations with WHY explanations
+- `BridgingReads.jsx` — standalone book recommendations
+- `SeriesDetailPage.jsx` — enhanced series page with all three components
+
+---

@@ -12,6 +12,10 @@ export const seriesApi = {
 
   getMissing: (id) => api.get(`/series/${id}/missing`),
 
+  getSimilar: (id, limit = 4) => api.get(`/series/${id}/similar?limit=${limit}`),
+
+  getBridging: (id, limit = 3) => api.get(`/series/${id}/bridging?limit=${limit}`),
+
   create: (data) => api.post('/series', data),
 
   update: (id, data) => api.put(`/series/${id}`, data),

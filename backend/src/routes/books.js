@@ -84,6 +84,12 @@ router.post('/:id/fetch-cover', async (req, res) => {
   res.json({ success: true, data: { coverUrl: finalUrl } })
 })
 
+// POST /api/books/:id/analyse  — re-run genre + sentiment inference via Ollama
+router.post('/:id/analyse', async (req, res) => {
+  const book = await bookService.analyseBook(req.params.id)
+  res.json({ success: true, data: book })
+})
+
 // PATCH /api/books/:id/status  (also accepts PUT for compatibility)
 router.patch('/:id/status', async (req, res) => {
   const { readStatus, progress, rating } = req.body
