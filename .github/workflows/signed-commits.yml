@@ -1,0 +1,29 @@
+name: Verify signed commits
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  signed-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Check commit signatures
+        run: |
+          COMMITS=$(git log --pretty="%G?" origin/main..HEAD 2>/dev/null || true)
+          if [[ -z "$COMMITS" ]]; then
+            echo "No commits to verify."
+            exit 0
+          fi
+          if echo "$COMMITS" | grep -qvE '^[GU]$'; then
+            echo "Unsigned or invalid commits detected."
+            exit 1
+          fi
+          echo "All commits signed."
